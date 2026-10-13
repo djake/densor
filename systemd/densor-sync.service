@@ -1,0 +1,12 @@
+[Unit]
+Description=Densor upload of readings to cloud storage
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=densor
+WorkingDirectory=/opt/densor
+EnvironmentFile=/etc/densor.env
+StateDirectory=densor
+ExecStart=/opt/densor/.venv/bin/python sync.py

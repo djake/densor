@@ -1,0 +1,16 @@
+[Unit]
+Description=Densor sensor logger
+After=network.target mosquitto.service
+Wants=mosquitto.service
+
+[Service]
+User=densor
+WorkingDirectory=/opt/densor
+EnvironmentFile=-/etc/densor.env
+StateDirectory=densor
+ExecStart=/opt/densor/.venv/bin/python logger.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
