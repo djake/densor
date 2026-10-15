@@ -178,10 +178,10 @@ sensor-to-sensor offsets, and firmware consistency.}
 \label{sec:cost}
 
 Table~\ref{tab:cost} lists the cost of the initial two-sensor configuration.
-The Pi kit, coordinator dongle, and microSD card were bought in one Amazon order
-on October 9, 2026. The sensor price is still TBD; edit the third argument of the
-corresponding \verb|\costrow| in the source and totals update automatically. The
-subtotal is partial until every row has a price.
+The sensors were bought in an Amazon order on October 5, 2026, and the Pi kit,
+coordinator dongle, and microSD card in a second Amazon order on October 9, 2026.
+Tax is the sum of the two orders. To change a price, edit the third argument of the
+corresponding \verb|\costrow| in the source and totals update automatically.
 
 \begin{table}[ht]
 \centering
@@ -194,8 +194,8 @@ Item & Qty & Unit & Total \\
 \costrow{CanaKit Raspberry Pi 3 B+ kit (Pi, clear case, 2.5\,A power supply)}{1}{89.99}
 \costrow{Sonoff Zigbee 3.0 USB Dongle Plus MG24 (coordinator)}{1}{35.90}
 \costrow{SanDisk MAX Endurance 32\,GB microSDHC card}{1}{35.99}
-\costrow{Sonoff SNZB-02P temperature/humidity sensor}{2}{0}
-\costrow{Sales tax on Amazon order of Oct.\ 9, 2026}{1}{9.71}
+\costrow{Sonoff SNZB-02P temperature/humidity sensor, 2-pack}{1}{29.90}
+\costrow{Sales tax (Amazon orders of Oct.\ 5 and Oct.\ 9, 2026)}{1}{11.58}
 \midrule
 \multicolumn{3}{@{}l}{Hardware subtotal} &
   \ifdim \hwtotal pt=0pt TBD\else\$\pgfmathprintnumber[fixed,zerofill,precision=2]{\hwtotal}\fi \\
@@ -211,7 +211,7 @@ actual Tigris charges once the bucket is in use.}
 
 \paragraph{Marginal cost per sensor.}
 Because the Pi, dongle, and storage are fixed costs, scaling the deployment adds
-only the SNZB-02P unit price per sensor. This is the figure that matters for the
+only the SNZB-02P unit price per sensor (\$14.95 each in the 2-pack, before tax). This is the figure that matters for the
 10--100 sensor target and is reported in the final analysis.
 
 \end{document}
