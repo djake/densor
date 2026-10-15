@@ -102,7 +102,7 @@ sensors per household.
   \item \textbf{Sensors:} two Sonoff SNZB-02P Zigbee temperature and humidity
     sensors, battery powered. They are named \texttt{densor-ch-01} and
     \texttt{densor-ch-02} (``ch'' denotes the house).
-  \item \textbf{Coordinator:} Sonoff Dongle Plus MG24 (Zigbee USB dongle).
+  \item \textbf{Coordinator:} Sonoff Zigbee 3.0 USB Dongle Plus MG24.
   \item \textbf{Host:} Raspberry Pi 3 B+ (1\,GB RAM), running Raspberry Pi OS
     Lite (64-bit), headless. The hostname and user are \texttt{densor}.
 \end{itemize}
@@ -178,8 +178,10 @@ sensor-to-sensor offsets, and firmware consistency.}
 \label{sec:cost}
 
 Table~\ref{tab:cost} lists the cost of the initial two-sensor configuration.
-Unit prices marked TBD have not yet been entered; edit the third argument of the
-corresponding \verb|\costrow| in the source and totals update automatically.
+The Pi kit, coordinator dongle, and microSD card were bought in one Amazon order
+on October 9, 2026. The sensor price is still TBD; edit the third argument of the
+corresponding \verb|\costrow| in the source and totals update automatically. The
+subtotal is partial until every row has a price.
 
 \begin{table}[ht]
 \centering
@@ -189,11 +191,11 @@ corresponding \verb|\costrow| in the source and totals update automatically.
 \toprule
 Item & Qty & Unit & Total \\
 \midrule
-\costrow{Raspberry Pi 3 B+}{1}{0}
-\costrow{Sonoff Dongle Plus MG24 (Zigbee coordinator)}{1}{0}
+\costrow{CanaKit Raspberry Pi 3 B+ kit (Pi, clear case, 2.5\,A power supply)}{1}{89.99}
+\costrow{Sonoff Zigbee 3.0 USB Dongle Plus MG24 (coordinator)}{1}{35.90}
+\costrow{SanDisk MAX Endurance 32\,GB microSDHC card}{1}{35.99}
 \costrow{Sonoff SNZB-02P temperature/humidity sensor}{2}{0}
-\costrow{microSD card}{1}{0}
-\costrow{Power supply}{1}{0}
+\costrow{Sales tax on Amazon order of Oct.\ 9, 2026}{1}{9.71}
 \midrule
 \multicolumn{3}{@{}l}{Hardware subtotal} &
   \ifdim \hwtotal pt=0pt TBD\else\$\pgfmathprintnumber[fixed,zerofill,precision=2]{\hwtotal}\fi \\
