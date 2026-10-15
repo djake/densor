@@ -258,6 +258,7 @@ Sonoff SNZB-02WD (IP65, LCD) & 2 & Outdoor temperature and humidity, one per sit
 Sonoff SNZB-02M (AirGuard TH Pressure) & 2 & Indoor temperature, humidity, and air pressure, one per site \\
 CanaKit Raspberry Pi 3 B+ kit & 1 & Host for the second site \\
 Sonoff Zigbee 3.0 USB Dongle Plus MG24 & 1 & Zigbee coordinator for the second site \\
+SanDisk MAX Endurance 32\,GB microSDHC card & 1 & Storage for the second site's Pi \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -323,8 +324,8 @@ The second site repeats the round-1 configuration (Section~\ref{sec:initial-conf
 a Raspberry Pi 3 B+ running Zigbee2MQTT, Mosquitto, the logger, and the hourly
 upload, with the same remote-access setup. Each site's readings are stored
 under the same bucket layout, and each device record carries its site and model.
-A microSD card for the second Pi is still needed, as the kit as listed does not include
-one. \todo{Choose a naming convention for the second site's devices.}
+The kit as listed does not include a microSD card, so one (the same SanDisk
+model as at the first site) was ordered separately. \todo{Choose a naming convention for the second site's devices.}
 
 \subsection{Planned software changes}
 
@@ -335,9 +336,11 @@ gains the new fields. \todo{Update logger, schema, and export, then test.}
 
 \subsection{Cost summary}
 
-Table~\ref{tab:cost2} lists the round-2 purchases, from one Amazon order arriving
-October 17, 2026. An unrelated item on the same order is excluded. Tax is the
-order's tax allocated in proportion to the included items, so it is an estimate.
+Table~\ref{tab:cost2} lists the round-2 purchases: one Amazon order arriving
+October 17, 2026, and a separate order for the microSD card, priced at the
+earlier card's \$35.99. An unrelated item on the first order is excluded. The
+first order's tax is allocated in proportion to the included items, so it is an
+estimate. Tax on the microSD order is not yet known.
 
 \xdef\hwtotal{0}
 \begin{table}[ht]
@@ -353,7 +356,9 @@ Item & Qty & Unit & Total \\
 \costrow{Sonoff SNZB-02B 4-pack}{1}{35.90}
 \costrow{CanaKit Raspberry Pi 3 B+ kit (second site)}{1}{89.99}
 \costrow{Sonoff Zigbee 3.0 USB Dongle Plus MG24 (second site)}{1}{35.90}
-\costrow{Sales tax (estimated share of order)}{1}{15.06}
+\costrow{SanDisk MAX Endurance 32\,GB microSDHC card (second site)}{1}{35.99}
+\costrow{Sales tax, first order (estimated share)}{1}{15.06}
+\costrow{Sales tax, microSD order}{1}{0}
 \midrule
 \multicolumn{3}{@{}l}{Round-2 subtotal} &
   \$\pgfmathprintnumber[fixed,zerofill,precision=2]{\hwtotal} \\
@@ -364,6 +369,6 @@ Item & Qty & Unit & Total \\
 \pgfmathparse{\firsttotal+\hwtotal}
 Together with the round-1 hardware (Table~\ref{tab:cost}), the hardware cost to
 date is \$\pgfmathprintnumber[fixed,zerofill,precision=2]{\pgfmathresult}.
-A microSD card for the second Pi is not yet included.
+This total is partial until the tax on the microSD order is entered.
 
 \end{document}
