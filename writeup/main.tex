@@ -174,6 +174,35 @@ Pi, then record first-week observations: reporting interval versus battery,
 sensor-to-sensor offsets, and firmware consistency.}
 
 % ========================= Cost summary ==================================
+\subsection{Planned sensor comparison}
+\label{sec:sensor-comparison}
+
+At about \$14.95 per sensor, the SNZB-02P sets a floor on the cost of scaling to
+10 to 100 sensors. A lower-cost candidate is the Sonoff SNZB-02B (AirGuard TH
+Lite), sold as a 4-pack for \$35.90 (about \$8.98 each, 40\% less). It is listed
+as supported by Zigbee2MQTT, with battery, temperature, humidity, and
+temperature and humidity calibration exposed. Its reporting interval and battery
+life at one reading per minute are not yet known.
+
+\textbf{Test design.} Place the two SNZB-02P sensors and the four SNZB-02B
+sensors together in one location for about a week, on the same Zigbee network
+and logging path. Compare:
+\begin{itemize}
+  \item mean offset of each sensor from the group mean (relative only, since no
+    reference thermometer is available);
+  \item noise, as the standard deviation of each sensor's difference from the
+    group mean;
+  \item reporting interval distribution, and gaps in the record;
+  \item battery level over the week, and link quality.
+\end{itemize}
+
+\textbf{Decision rule.} Adopt the SNZB-02B for scaling if its offsets are stable
+enough to remove with the built-in calibration setting, it reports about once a
+minute without gaps, and its battery drain projects to a usable life.
+Otherwise, keep the SNZB-02P as the standard sensor. Mixing models is possible
+because readings are keyed on the IEEE address, provided the model is recorded
+per device. \todo{Order the 4-pack and run the comparison.}
+
 \subsection{Cost Summary}
 \label{sec:cost}
 
