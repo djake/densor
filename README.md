@@ -13,3 +13,5 @@ Configuration is through environment variables (systemd reads `/etc/densor.env`)
 `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`, `DENSOR_DB`, `MQTT_HOST`, `MQTT_PORT`.
 
 All rights reserved. See `LICENSE`.
+
+`writeup/` contains the LaTeX source of the project writeup (`cd writeup && latexmk -pdf main.tex`).

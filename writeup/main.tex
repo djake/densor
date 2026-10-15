@@ -1,0 +1,215 @@
+\documentclass[11pt,letterpaper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
+\usepackage{pgf}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\usepackage{listings}
+
+% ---- Project metadata (edit here) -------------------------------------
+\newcommand{\projecttitle}{Densor}
+\newcommand{\projectsubtitle}{Sensor Density and Building Inference}
+\newcommand{\authorname}{Jake Lambert}
+\newcommand{\institution}{[Institution]}
+\newcommand{\program}{Master of Science in Data Science}
+\newcommand{\advisor}{[Advisor]}
+\newcommand{\projectterm}{Capstone Project, 2026--2027}
+% -----------------------------------------------------------------------
+
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\fancyfoot[C]{\thepage}
+
+\lstset{basicstyle=\ttfamily\small,breaklines=true,frame=single,columns=fullflexible}
+
+\newcommand{\todo}[1]{\textbf{[TODO: #1]}}
+
+% Cost table rows: \costrow{item}{qty}{unit price in USD, 0 = not yet entered}
+\newcounter{costrows}
+\newcommand{\hwtotal}{0}
+\newcommand{\costrow}[3]{%
+  \pgfmathsetmacro{\linetotal}{#2*#3}\xdef\linetotal{\linetotal}%
+  \pgfmathsetmacro{\hwtotal}{\hwtotal+\linetotal}%
+  \xdef\hwtotal{\hwtotal}%
+  #1 & #2 & \ifdim #3pt=0pt TBD\else\$\pgfmathprintnumber[fixed,zerofill,precision=2]{#3}\fi
+     & \ifdim #3pt=0pt TBD\else\$\pgfmathprintnumber[fixed,zerofill,precision=2]{\linetotal}\fi \\
+}
+
+\begin{document}
+
+% ========================= Cover page ====================================
+\begin{titlepage}
+  \centering
+  \vspace*{1.2in}
+  {\Huge\bfseries \projecttitle\par}
+  \vspace{0.4cm}
+  {\Large \projectsubtitle\par}
+  \vspace{1.5cm}
+  {\large Does increasing sensor density yield step increases in\\
+  the inferences we can make about a home?\par}
+  \vfill
+  {\large \authorname\par}
+  \vspace{0.3cm}
+  \program\\
+  \institution\par
+  \vspace{0.3cm}
+  Advisor: \advisor\par
+  \vspace{0.3cm}
+  \projectterm\par
+  \vspace{0.3cm}
+  \textit{Working draft, \today}\par
+  \vspace{0.8in}
+\end{titlepage}
+
+\tableofcontents
+\clearpage
+
+% ========================= Introduction ==================================
+\section{Introduction}
+\todo{Motivation, thesis, and research questions. Draft thesis: increasing
+sensor density yields step increases in the inferences available about a home
+or building, with diminishing returns. This is a work in progress.}
+
+The hypothesis is tested by ablation: the same recorded dataset is analyzed using
+1, 2, 5, 10, and $N$ sensors, and the inferences available at each density are
+compared. Thermostat API integration and a recommendations engine are out of
+scope.
+
+Project code is kept in a repository at
+\url{https://github.com/djake/densor}.
+
+% ========================= Initial configuration =========================
+\section{Initial Configuration}
+\label{sec:initial-config}
+
+The proof of concept (fall semester 2026) starts with two sensors and a single
+low-power host. This configuration is intentionally minimal: it exercises the
+whole data path end to end before the deployment is scaled to 10 or more
+sensors per household.
+
+\subsection{Hardware}
+
+\begin{itemize}
+  \item \textbf{Sensors:} two Sonoff SNZB-02P Zigbee temperature and humidity
+    sensors, battery powered. They are named \texttt{densor-ch-01} and
+    \texttt{densor-ch-02} (``ch'' denotes the house).
+  \item \textbf{Coordinator:} Sonoff Dongle Plus MG24 (Zigbee USB dongle).
+  \item \textbf{Host:} Raspberry Pi 3 B+ (1\,GB RAM), running Raspberry Pi OS
+    Lite (64-bit), headless. The hostname and user are \texttt{densor}.
+\end{itemize}
+
+\subsection{Software and data path}
+
+Zigbee2MQTT bridges the Zigbee network to an MQTT broker (Mosquitto). A Python
+logger subscribes to the sensor topics and writes each reading to a SQLite
+database on the Pi, which is the source of truth. A separate hourly job exports
+each closed hour as a Parquet file and uploads it to an S3-compatible bucket
+(Tigris) for analysis. Zigbee2MQTT and Mosquitto are enabled at boot under
+systemd, as are the logger and the upload timer.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[
+  node distance=0.55cm and 0.55cm,
+  box/.style={draw,rounded corners=2pt,align=center,minimum height=0.95cm,
+              inner sep=4pt,font=\small},
+  arr/.style={-{Stealth[length=2mm]}}]
+  \node[box] (s)  {Zigbee\\sensors};
+  \node[box,right=of s]  (z) {Zigbee2\\MQTT};
+  \node[box,right=of z]  (m) {Mosquitto};
+  \node[box,right=of m]  (l) {Python\\logger};
+  \node[box,below=0.8cm of l] (db) {SQLite\\(on Pi)};
+  \node[box,left=of db]  (sy) {Hourly\\sync};
+  \node[box,left=of sy]  (b) {Tigris\\bucket};
+  \node[box,left=of b]   (a) {Analysis\\(laptop)};
+  \draw[arr] (s)--(z); \draw[arr] (z)--(m); \draw[arr] (m)--(l);
+  \draw[arr] (l)--(db); \draw[arr] (db)--(sy); \draw[arr] (sy)--(b);
+  \draw[arr] (b)--(a);
+\end{tikzpicture}
+\caption{Data path of the initial two-sensor configuration.}
+\label{fig:datapath}
+\end{figure}
+
+\subsection{Key configuration choices}
+
+\begin{itemize}
+  \item \textbf{Zigbee channel:} 25.
+  \item \textbf{Device identity:} readings are keyed on each sensor's permanent
+    IEEE address; the friendly name is stored as metadata and can change without
+    breaking the record.
+  \item \textbf{Timestamps:} assigned on arrival at the Pi, in UTC. Sensors
+    report in $^\circ$C.
+  \item \textbf{Collection frequency:} working target of one reading per
+    minute per sensor.
+  \item \textbf{Cloud layout:} immutable per-hour Parquet objects at
+    \texttt{readings/date=\allowbreak YYYY-MM-DD/\allowbreak hour=HH.parquet}, plus a
+    \texttt{devices.json} mapping. Object stores have no append operation, so
+    each hour is written once after it closes. If the Pi is offline, local
+    collection continues and missed hours upload on the next run.
+  \item \textbf{Remote access:} ZeroTier private network with no port
+    forwarding; SSH using an Ed25519 key held in 1Password, with password
+    authentication disabled on the Pi.
+\end{itemize}
+
+\subsection{Power-outage assumptions}
+
+No readings are collected during an outage. The Pi reboots on its own when power
+returns and all services restart. SD-card corruption risk is mitigated by a
+high-endurance card and small, frequent database commits. \todo{Verify with a
+reboot test and a pull-the-plug test, and record results.}
+
+\subsection{Status}
+
+The logger and upload code have been tested locally only. \todo{Deploy to the
+Pi, then record first-week observations: reporting interval versus battery,
+sensor-to-sensor offsets, and firmware consistency.}
+
+% ========================= Cost summary ==================================
+\section{Cost Summary}
+\label{sec:cost}
+
+Table~\ref{tab:cost} lists the cost of the initial two-sensor configuration.
+Unit prices marked TBD have not yet been entered; edit the third argument of the
+corresponding \verb|\costrow| in the source and totals update automatically.
+
+\begin{table}[ht]
+\centering
+\caption{Hardware cost of the initial configuration (USD).}
+\label{tab:cost}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Item & Qty & Unit & Total \\
+\midrule
+\costrow{Raspberry Pi 3 B+}{1}{0}
+\costrow{Sonoff Dongle Plus MG24 (Zigbee coordinator)}{1}{0}
+\costrow{Sonoff SNZB-02P temperature/humidity sensor}{2}{0}
+\costrow{microSD card}{1}{0}
+\costrow{Power supply}{1}{0}
+\midrule
+\multicolumn{3}{@{}l}{Hardware subtotal} &
+  \ifdim \hwtotal pt=0pt TBD\else\$\pgfmathprintnumber[fixed,zerofill,precision=2]{\hwtotal}\fi \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Recurring and software costs.}
+Zigbee2MQTT, Mosquitto, ZeroTier (free tier), and the Python libraries used are
+free. Cloud storage on Tigris is billed by usage; at the expected data volume
+(a few readings per minute per sensor) it should be small. \todo{Record the
+actual Tigris charges once the bucket is in use.}
+
+\paragraph{Marginal cost per sensor.}
+Because the Pi, dongle, and storage are fixed costs, scaling the deployment adds
+only the SNZB-02P unit price per sensor. This is the figure that matters for the
+10--100 sensor target and is reported in the final analysis.
+
+\end{document}
