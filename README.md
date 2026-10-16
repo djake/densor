@@ -6,6 +6,7 @@ uploaded to cloud storage for analysis.
 
 - `logger.py`: subscribes to Zigbee2MQTT over MQTT and writes readings to a local SQLite database.
 - `sync.py`: uploads each closed hour of readings to an S3-compatible bucket as Parquet.
+- `tools/backfill.py`: one-off load of earlier readings (from a Zigbee2MQTT-log CSV) into the local database.
 - `systemd/`: service and timer units that run both on the Pi.
 
 Configuration is through environment variables (systemd reads `/etc/densor.env`):
