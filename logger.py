@@ -26,7 +26,7 @@ CREATE INDEX IF NOT EXISTS readings_ts ON readings (ts_utc);
 CREATE TABLE IF NOT EXISTS devices (
     ieee TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    location TEXT
+    description TEXT               -- free text from the Zigbee2MQTT device description
 );
 """
 
@@ -36,7 +36,19 @@ def open_db(path=DB_PATH):
     db.execute("PRAGMA journal_mode=WAL")
     db.execute("PRAGMA synchronous=NORMAL")
     db.executescript(SCHEMA)
+    migrate(db)
     return db
+
+
+def migrate(db):
+    """Rename devices.location to devices.description on databases created earlier."""
+    cols = [row[1] for row in db.execute("PRAGMA table_info(devices)")]
+    if "location" in cols and "description" not in cols:
+        try:
+            db.execute("ALTER TABLE devices RENAME COLUMN location TO description")
+            db.commit()
+        except sqlite3.OperationalError:
+            pass  # another process migrated first
 
 
 def utc_now():
@@ -53,10 +65,14 @@ def update_devices(db, names, payload):
         if device.get("type") == "Coordinator":
             continue
         ieee, name = device["ieee_address"], device["friendly_name"]
+        # Top-level device description (set in the Zigbee2MQTT frontend), not the
+        # model description under "definition". Empty keeps any stored value.
+        description = (device.get("description") or "").strip() or None
         db.execute(
-            "INSERT INTO devices (ieee, name) VALUES (?, ?) "
-            "ON CONFLICT(ieee) DO UPDATE SET name = excluded.name",
-            (ieee, name),
+            "INSERT INTO devices (ieee, name, description) VALUES (?, ?, ?) "
+            "ON CONFLICT(ieee) DO UPDATE SET name = excluded.name, "
+            "description = COALESCE(excluded.description, devices.description)",
+            (ieee, name, description),
         )
         names[name] = ieee
     db.commit()

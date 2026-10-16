@@ -77,8 +77,8 @@ def main():
     )
 
     devices = [
-        {"ieee": i, "name": n, "location": loc}
-        for i, n, loc in db.execute("SELECT ieee, name, location FROM devices")
+        {"ieee": i, "name": n, "description": desc}
+        for i, n, desc in db.execute("SELECT ieee, name, description FROM devices")
     ]
     s3.put_object(
         Bucket=BUCKET,
