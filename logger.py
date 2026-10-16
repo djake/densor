@@ -66,12 +66,13 @@ def update_devices(db, names, payload):
             continue
         ieee, name = device["ieee_address"], device["friendly_name"]
         # Top-level device description (set in the Zigbee2MQTT frontend), not the
-        # model description under "definition". Empty keeps any stored value.
+        # model description under "definition". Zigbee2MQTT is authoritative, so an
+        # empty description clears the stored value.
         description = (device.get("description") or "").strip() or None
         db.execute(
             "INSERT INTO devices (ieee, name, description) VALUES (?, ?, ?) "
             "ON CONFLICT(ieee) DO UPDATE SET name = excluded.name, "
-            "description = COALESCE(excluded.description, devices.description)",
+            "description = excluded.description",
             (ieee, name, description),
         )
         names[name] = ieee
