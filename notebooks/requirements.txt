@@ -1,0 +1,7 @@
+duckdb
+pandas
+pyarrow
+plotly
+nbformat
+python-dotenv
+jupyterlab

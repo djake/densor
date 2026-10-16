@@ -17,3 +17,16 @@ Configuration is through environment variables (systemd reads `/etc/densor.env`)
 All rights reserved. See `LICENSE`.
 
 `writeup/` contains the LaTeX source of the project writeup (`cd writeup && latexmk -pdf main.tex`).
+
+## Exploring the data
+
+`notebooks/explore.ipynb` reads the Parquet files from the bucket with DuckDB and plots them.
+
+```
+cd notebooks
+cp densor-read.env.example .env      # then fill in a read-only Tigris key
+uv venv && uv pip install -r requirements.txt
+uv run jupyter lab explore.ipynb
+```
+
+Use a separate read-only key (Viewer role on the bucket), never the Pi's write key. `.env` is gitignored. Keep notebook outputs out of commits.
