@@ -10,6 +10,7 @@ import os
 import tempfile
 
 import boto3
+from botocore.config import Config
 import pyarrow as pa
 import pyarrow.parquet as pq
 
@@ -18,6 +19,8 @@ from logger import open_db, utc_now
 BUCKET = os.environ["S3_BUCKET"]
 PREFIX = os.environ.get("S3_PREFIX", "densor").strip("/")
 ENDPOINT = os.environ.get("S3_ENDPOINT")  # leave unset for AWS S3
+# Tigris wants "virtual"; use "path" for stores that need it (e.g. a local MinIO).
+ADDRESSING = os.environ.get("S3_ADDRESSING_STYLE", "virtual")
 
 SCHEMA = pa.schema([
     ("ts_utc", pa.string()),
@@ -67,7 +70,11 @@ def main():
         "CREATE TABLE IF NOT EXISTS synced_hours "
         "(hour TEXT PRIMARY KEY, rows INTEGER, uploaded_at TEXT)"
     )
-    s3 = boto3.client("s3", endpoint_url=ENDPOINT)
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=ENDPOINT,
+        config=Config(s3={"addressing_style": ADDRESSING}),
+    )
 
     devices = [
         {"ieee": i, "name": n, "location": loc}

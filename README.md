@@ -9,8 +9,9 @@ uploaded to cloud storage for analysis.
 - `systemd/`: service and timer units that run both on the Pi.
 
 Configuration is through environment variables (systemd reads `/etc/densor.env`):
-`S3_BUCKET` (required for `sync.py`), `S3_PREFIX`, `S3_ENDPOINT`, `AWS_ACCESS_KEY_ID`,
-`AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`, `DENSOR_DB`, `MQTT_HOST`, `MQTT_PORT`.
+`S3_BUCKET` (required for `sync.py`), `S3_PREFIX`, `S3_ENDPOINT`, `S3_ADDRESSING_STYLE`
+(default `virtual`), `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `DENSOR_DB`,
+`MQTT_HOST`, `MQTT_PORT`. See `densor.env.example`.
 
 All rights reserved. See `LICENSE`.
 
