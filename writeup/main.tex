@@ -169,8 +169,22 @@ reboot test and a pull-the-plug test, and record results.}
 
 \subsection{Status}
 
-The logger and upload code have been tested locally only. \todo{Deploy to the
-Pi, then record first-week observations: reporting interval versus battery,
+The logger and upload job run on the Pi. Readings from October 12 onward,
+including the period before the logger existed (backfilled from the
+Zigbee2MQTT logs), are in the cloud bucket as hourly Parquet files, and an
+exploration notebook (\texttt{notebooks/explore.ipynb}) reads them directly with
+DuckDB. The device table stores each sensor's Zigbee2MQTT description, so
+placement notes entered in the Zigbee2MQTT frontend reach the data.
+
+\paragraph{Placement.} Both sensors are in an unheated closet at the first
+house, placed there deliberately to see how readings diverge in the cold,
+because a leak is suspected through either the wall or the floor of a
+cantilevered part of the house. The house has had minimal heating since
+October~13. The two series track closely until about midnight on October~13
+and then diverge by 1 to 3\,\textdegree{}C. \todo{Record which sensor is on the
+wall and which is near the floor, then relate the divergence to placement.}
+
+\todo{Record first-week observations: reporting interval versus battery,
 sensor-to-sensor offsets, and firmware consistency.}
 
 % ========================= Cost summary ==================================
