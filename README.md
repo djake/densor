@@ -20,7 +20,7 @@ All rights reserved. See `LICENSE`.
 
 ## Exploring the data
 
-`notebooks/explore.ipynb` reads the Parquet files from the bucket with DuckDB and plots them.
+`notebooks/explore.ipynb` reads the Parquet files for every site from the bucket with DuckDB and plots them. Each Pi uploads under its own prefix (`S3_PREFIX` on the Pi); the notebook lists them as `site=prefix` pairs in `S3_SITES`.
 
 ```
 cd notebooks
