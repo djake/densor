@@ -5,3 +5,4 @@ plotly
 nbformat
 python-dotenv
 jupyterlab
+nbstripout
