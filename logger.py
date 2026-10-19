@@ -11,7 +11,7 @@ DB_PATH = os.environ.get("DENSOR_DB", "/var/lib/densor/densor.db")
 MQTT_HOST = os.environ.get("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
 BASE = os.environ.get("Z2M_BASE_TOPIC", "zigbee2mqtt")
-FIELDS = ("temperature", "humidity", "pressure", "battery", "linkquality")
+FIELDS = ("temperature", "humidity", "pressure", "battery", "voltage", "linkquality")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS readings (
@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS readings (
     humidity REAL,
     pressure REAL,                 -- hPa, only on sensors with a barometer
     battery INTEGER,
+    voltage REAL,                  -- battery voltage, mV (Zigbee2MQTT reports millivolts)
     linkquality INTEGER
 );
 CREATE INDEX IF NOT EXISTS readings_ts ON readings (ts_utc);
@@ -44,12 +45,13 @@ def open_db(path=DB_PATH):
 def migrate(db):
     """Bring databases created earlier up to the current schema."""
     reading_cols = [row[1] for row in db.execute("PRAGMA table_info(readings)")]
-    if "pressure" not in reading_cols:
-        try:
-            db.execute("ALTER TABLE readings ADD COLUMN pressure REAL")
-            db.commit()
-        except sqlite3.OperationalError:
-            pass  # another process migrated first
+    for column in ("pressure", "voltage"):
+        if column not in reading_cols:
+            try:
+                db.execute(f"ALTER TABLE readings ADD COLUMN {column} REAL")
+                db.commit()
+            except sqlite3.OperationalError:
+                pass  # another process migrated first
     cols = [row[1] for row in db.execute("PRAGMA table_info(devices)")]
     if "location" in cols and "description" not in cols:
         try:
@@ -107,8 +109,8 @@ def handle_message(db, names, topic, payload, now=None):
     if all(v is None for v in values):
         return
     db.execute(
-        "INSERT INTO readings (ts_utc, ieee, temperature, humidity, pressure, battery, linkquality) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO readings (ts_utc, ieee, temperature, humidity, pressure, battery, voltage, linkquality) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (stamp(now or utc_now()), ieee, *values),
     )
     db.commit()  # small and often: a power cut loses at most the last few readings

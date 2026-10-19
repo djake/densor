@@ -45,10 +45,10 @@ roots
 
 # %%
 COLUMNS = ["site", "ts_utc", "ieee", "name", "description",
-           "temperature", "humidity", "pressure", "battery", "linkquality"]
+           "temperature", "humidity", "pressure", "battery", "voltage", "linkquality"]
 
 def site_query(site, root):
-    # r.* so that sites whose files predate a column (pressure) still load
+    # r.* so that sites whose files predate a column (pressure, voltage) still load
     return f"""
         SELECT '{site}' AS site, r.*, d.name, d.description
         FROM read_parquet('{root}/readings/date=*/hour=*.parquet', union_by_name = true) r
@@ -76,7 +76,7 @@ SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
 
 def live_rows(site, host, after):
     sql = ("SELECT r.ts_utc, r.ieee, d.name, d.description, r.temperature, r.humidity, "
-           "r.pressure, r.battery, r.linkquality FROM readings r LEFT JOIN devices d USING (ieee) "
+           "r.pressure, r.battery, r.voltage, r.linkquality FROM readings r LEFT JOIN devices d USING (ieee) "
            f"WHERE r.ts_utc > '{after}' ORDER BY r.ts_utc")
     cmd = f"sqlite3 -readonly -json {shlex.quote(REMOTE_DB)} {shlex.quote(sql)}"
     out = subprocess.run(["ssh", *SSH_OPTS, host, cmd], capture_output=True, text=True, timeout=30)
@@ -142,6 +142,17 @@ px.histogram(df.dropna(subset=["gap_s"]), x="gap_s", color="name", log_y=True, n
 
 # %%
 px.line(df, x="ts_local", y="battery", color="name", title="Battery (%)").show()
+
+# %%
+# Voltage (mV) is the better discharge signal: the battery % is derived from it and moves in coarse steps.
+v = df.dropna(subset=["voltage"])
+if v.empty:
+    print("No voltage readings yet")
+else:
+    px.line(v, x="ts_local", y="voltage", color="name", title="Battery voltage (mV)",
+            labels={"ts_local": "", "voltage": "mV"}).show()
+
+# %%
 px.scatter(df, x="ts_local", y="linkquality", color="name", title="Link quality").show()
 
 # %% [markdown]
