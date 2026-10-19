@@ -20,13 +20,16 @@ All rights reserved. See `LICENSE`.
 
 ## Exploring the data
 
-`notebooks/explore.ipynb` reads the Parquet files for every site from the bucket with DuckDB and plots them. Each Pi uploads under its own prefix (`S3_PREFIX` on the Pi); the notebook lists them as `site=prefix` pairs in `S3_SITES`.
+`notebooks/explore.py` is the notebook, stored as a plain Python file (jupytext "percent" format) so that running it never changes a tracked file. It reads the Parquet files for every site from the bucket with DuckDB and plots them. Each Pi uploads under its own prefix (`S3_PREFIX` on the Pi); the notebook lists them as `site=prefix` pairs in `S3_SITES`.
 
 ```
 cd notebooks
 cp densor-read.env.example .env      # then fill in a read-only Tigris key
 uv venv && uv pip install -r requirements.txt
+uv run jupytext --sync explore.py    # creates explore.ipynb (gitignored), paired with explore.py
 uv run jupyter lab explore.ipynb
 ```
 
-Use a separate read-only key (Viewer role on the bucket), never the Pi's write key. `.env` is gitignored. Keep notebook outputs out of commits.
+Edits made in JupyterLab are saved to both files; outputs only ever land in the ignored `.ipynb`. Edit `explore.py` and commit that.
+
+Use a separate read-only key (Viewer role on the bucket), never the Pi's write key. `.env` and the generated `.ipynb` are gitignored.

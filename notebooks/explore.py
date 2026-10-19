@@ -1,0 +1,120 @@
+# ---
+# jupyter:
+#   jupytext:
+#     formats: ipynb,py:percent
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.19.6
+#   kernelspec:
+#     display_name: Python 3
+#     language: python
+#     name: python3
+# ---
+
+# %% [markdown]
+# # Densor: explore the readings
+#
+# Reads the hourly Parquet files and `devices.json` for every site straight from the Tigris bucket with DuckDB. Each site uploads under its own prefix (set in `S3_SITES`). Timestamps are stored in UTC and converted to local time here.
+#
+# Credentials come from `notebooks/.env` or the process environment. Use a read-only key.
+
+# %%
+import os
+import duckdb
+import pandas as pd
+import plotly.express as px
+from dotenv import load_dotenv
+
+load_dotenv()  # reads notebooks/.env if present; real environment variables also work
+
+LOCAL_TZ = "America/New_York"
+TEMP_UNIT = os.environ.get("TEMP_UNIT", "F").upper()  # "F" or "C"; readings are stored in Celsius
+BUCKET = os.environ.get("S3_BUCKET", "densor")
+# site=prefix pairs: each Pi uploads under its own prefix
+SITES = dict(p.split("=", 1) for p in os.environ.get("S3_SITES", "ch=densor-ch,sr=densor-sr").split(","))
+LOCAL_DIR = os.environ.get("DENSOR_LOCAL_DIR")
+
+con = duckdb.connect()
+if LOCAL_DIR:
+    roots = {site: f"{LOCAL_DIR.rstrip('/')}/{prefix}" for site, prefix in SITES.items()}
+else:
+    endpoint = os.environ.get("S3_ENDPOINT", "t3.storage.dev").replace("https://", "")
+    con.execute(f"""
+        CREATE OR REPLACE SECRET tigris (
+            TYPE s3,
+            KEY_ID '{os.environ["AWS_ACCESS_KEY_ID"]}',
+            SECRET '{os.environ["AWS_SECRET_ACCESS_KEY"]}',
+            ENDPOINT '{endpoint}',
+            URL_STYLE 'vhost',
+            REGION '{os.environ.get("AWS_REGION", "auto")}'
+        )
+    """)
+    roots = {site: f"s3://{BUCKET}/{prefix}" for site, prefix in SITES.items()}
+roots
+
+
+# %% [markdown]
+# ## Load
+
+# %%
+def site_query(site, root):
+    return f"""
+        SELECT '{site}' AS site, r.ts_utc, r.ieee, d.name, d.description,
+               r.temperature, r.humidity, r.battery, r.linkquality
+        FROM read_parquet('{root}/readings/date=*/hour=*.parquet') r
+        LEFT JOIN read_json('{root}/devices.json') d USING (ieee)
+    """
+
+frames = []
+for site, root in roots.items():
+    try:
+        frames.append(con.execute(site_query(site, root)).df())
+    except duckdb.IOException as e:  # a site with no files yet
+        print(f"skipping {site}: {e}")
+df = pd.concat(frames, ignore_index=True).sort_values("ts_utc")
+
+df["ts"] = pd.to_datetime(df["ts_utc"], utc=True)
+df["ts_local"] = df["ts"].dt.tz_convert(LOCAL_TZ)
+df["name"] = df["name"].fillna(df["ieee"])
+df["temp"] = df["temperature"] * 9 / 5 + 32 if TEMP_UNIT == "F" else df["temperature"]  # `temperature` stays in Celsius
+df.groupby(["site", "name"]).agg(rows=("ts", "size"), first=("ts_local", "min"), last=("ts_local", "max"))
+
+# %% [markdown]
+# ## Four series: temperature and humidity per sensor
+
+# %%
+px.scatter(df, x="ts_local", y="temp", color="name",
+           title=f"Temperature (°{TEMP_UNIT})", labels={"ts_local": "", "temp": f"°{TEMP_UNIT}"}).show()
+
+# %%
+px.scatter(df, x="ts_local", y="humidity", color="name",
+           title="Relative humidity (%)", labels={"ts_local": "", "humidity": "%"}).show()
+
+# %% [markdown]
+# ## Reporting behaviour
+#
+# The sensors report on change plus an hourly heartbeat, so a long gap means no change, not missing data.
+
+# %%
+df["gap_s"] = df.groupby("name")["ts"].diff().dt.total_seconds()
+print(df.groupby("name")["gap_s"].describe(percentiles=[.5, .9, .99]).round(1))
+px.histogram(df.dropna(subset=["gap_s"]), x="gap_s", color="name", log_y=True, nbins=60,
+             title="Seconds between readings").show()
+
+# %% [markdown]
+# ## Battery and link quality
+
+# %%
+px.line(df, x="ts_local", y="battery", color="name", title="Battery (%)").show()
+px.scatter(df, x="ts_local", y="linkquality", color="name", title="Link quality").show()
+
+# %% [markdown]
+# ## Your own queries
+#
+# `con` is a live DuckDB connection and `roots` maps each site to its location, so you can query the files directly, for example:
+#
+# ```python
+# con.execute(f"SELECT date_trunc('hour', ts_utc::TIMESTAMP) h, ieee, avg(temperature) FROM read_parquet('{roots['ch']}/readings/*/*.parquet') GROUP BY ALL ORDER BY h").df()
+# ```

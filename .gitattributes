@@ -1,2 +1,0 @@
-# Strip notebook outputs and execution counts (needs: nbstripout --install, see README)
-*.ipynb filter=nbstripout diff=ipynb

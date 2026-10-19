@@ -12,3 +12,5 @@ __pycache__/
 *.fdb_latexmk
 *.synctex.gz
 writeup/main.pdf
+notebooks/*.ipynb
+.ipynb_checkpoints/
