@@ -1,0 +1,5 @@
+# Pair explore.ipynb (gitignored) with explore.py, and keep machine-specific
+# metadata (kernel name, jupytext version) out of the committed file.
+formats = "ipynb,py:percent"
+notebook_metadata_filter = "-all"
+cell_metadata_filter = "-all"
