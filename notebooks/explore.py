@@ -59,18 +59,21 @@ roots
 # ## Load
 
 # %%
+COLUMNS = ["site", "ts_utc", "ieee", "name", "description",
+           "temperature", "humidity", "pressure", "battery", "linkquality"]
+
 def site_query(site, root):
+    # r.* so that sites whose files predate a column (pressure) still load
     return f"""
-        SELECT '{site}' AS site, r.ts_utc, r.ieee, d.name, d.description,
-               r.temperature, r.humidity, r.battery, r.linkquality
-        FROM read_parquet('{root}/readings/date=*/hour=*.parquet') r
+        SELECT '{site}' AS site, r.*, d.name, d.description
+        FROM read_parquet('{root}/readings/date=*/hour=*.parquet', union_by_name = true) r
         LEFT JOIN read_json('{root}/devices.json') d USING (ieee)
     """
 
 frames = []
 for site, root in roots.items():
     try:
-        frames.append(con.execute(site_query(site, root)).df())
+        frames.append(con.execute(site_query(site, root)).df().reindex(columns=COLUMNS))
     except duckdb.IOException as e:  # a site with no files yet
         print(f"skipping {site}: {e}")
 df = pd.concat(frames, ignore_index=True).sort_values("ts_utc")
@@ -91,6 +94,19 @@ px.scatter(df, x="ts_local", y="temp", color="name",
 # %%
 px.scatter(df, x="ts_local", y="humidity", color="name",
            title="Relative humidity (%)", labels={"ts_local": "", "humidity": "%"}).show()
+
+# %% [markdown]
+# ## Air pressure
+#
+# Only sensors with a barometer (SNZB-02M) report it, and files uploaded before pressure was added have no pressure column, so they read as empty.
+
+# %%
+p = df.dropna(subset=["pressure"])
+if p.empty:
+    print("No pressure readings yet")
+else:
+    px.scatter(p, x="ts_local", y="pressure", color="name",
+               title="Air pressure (hPa)", labels={"ts_local": "", "pressure": "hPa"}).show()
 
 # %% [markdown]
 # ## Reporting behaviour

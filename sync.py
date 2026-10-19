@@ -27,6 +27,7 @@ SCHEMA = pa.schema([
     ("ieee", pa.string()),
     ("temperature", pa.float64()),
     ("humidity", pa.float64()),
+    ("pressure", pa.float64()),
     ("battery", pa.int64()),
     ("linkquality", pa.int64()),
 ])
@@ -47,7 +48,7 @@ def closed_hours(db, now):
 
 def export_hour(db, hour, path):
     rows = db.execute(
-        "SELECT ts_utc, ieee, temperature, humidity, battery, linkquality "
+        "SELECT ts_utc, ieee, temperature, humidity, pressure, battery, linkquality "
         "FROM readings WHERE substr(ts_utc, 1, 13) = ? ORDER BY ts_utc",
         (hour,),
     ).fetchall()
