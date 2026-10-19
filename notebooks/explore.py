@@ -61,7 +61,40 @@ for site, root in roots.items():
         frames.append(con.execute(site_query(site, root)).df().reindex(columns=COLUMNS))
     except duckdb.IOException as e:  # a site with no files yet
         print(f"skipping {site}: {e}")
-df = pd.concat(frames, ignore_index=True).sort_values("ts_utc")
+df = pd.concat(frames, ignore_index=True)
+
+# Optional live tail: ask each Pi (over SSH) for readings newer than the last
+# uploaded hour, so the newest hours show before the next hourly upload.
+# DENSOR_LIVE="ch=densor@10.163.114.13,sr=densor@10.163.114.239"; unset to skip.
+import json, shlex, subprocess
+
+LIVE = dict(p.split("=", 1) for p in os.environ.get("DENSOR_LIVE", "").split(",") if p)
+REMOTE_DB = os.environ.get("DENSOR_REMOTE_DB", "/var/lib/densor/densor.db")
+SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
+            "-o", "ControlMaster=auto", "-o", "ControlPath=~/.ssh/cm-densor-%C",
+            "-o", "ControlPersist=120"]
+
+def live_rows(site, host, after):
+    sql = ("SELECT r.ts_utc, r.ieee, d.name, d.description, r.temperature, r.humidity, "
+           "r.pressure, r.battery, r.linkquality FROM readings r LEFT JOIN devices d USING (ieee) "
+           f"WHERE r.ts_utc > '{after}' ORDER BY r.ts_utc")
+    cmd = f"sqlite3 -readonly -json {shlex.quote(REMOTE_DB)} {shlex.quote(sql)}"
+    out = subprocess.run(["ssh", *SSH_OPTS, host, cmd], capture_output=True, text=True, timeout=30)
+    if out.returncode != 0:
+        raise RuntimeError(out.stderr.strip() or f"ssh exited {out.returncode}")
+    rows = json.loads(out.stdout) if out.stdout.strip() else []
+    return pd.DataFrame(rows).assign(site=site).reindex(columns=COLUMNS)
+
+for site, host in LIVE.items():
+    # Uploaded hours are complete, so anything newer than the newest bucket row is not in the bucket.
+    after = df.loc[df["site"] == site, "ts_utc"].max() if (df["site"] == site).any() else "0000"
+    try:
+        extra = live_rows(site, host, after)
+        print(f"live {site}: {len(extra)} readings newer than {after}")
+        df = pd.concat([df, extra], ignore_index=True)
+    except Exception as e:  # Pi unreachable, ssh denied, old schema, ...
+        print(f"live {site}: skipped ({e})")
+df = df.sort_values("ts_utc")
 
 df["ts"] = pd.to_datetime(df["ts_utc"], utc=True)
 df["ts_local"] = df["ts"].dt.tz_convert(LOCAL_TZ)

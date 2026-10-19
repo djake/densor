@@ -32,4 +32,6 @@ uv run jupyter lab explore.ipynb
 
 Edits made in JupyterLab are saved to both files; outputs only ever land in the ignored `.ipynb`. Edit `explore.py` and commit that.
 
+**Live tail (optional).** The bucket lags by up to an hour. To see the newest readings, set `DENSOR_LIVE` to `site=user@host` pairs (use the ZeroTier addresses). After loading the bucket, the notebook runs `sqlite3 -readonly` on each Pi over SSH for readings newer than the last uploaded one and appends them. If a Pi can't be reached it prints a message and carries on with the bucket data. SSH must work non-interactively from your account (with 1Password, that means its SSH agent is configured in `~/.ssh/config`), and the terminal that launches Jupyter needs the macOS Local Network permission.
+
 Use a separate read-only key (Viewer role on the bucket), never the Pi's write key. `.env` and the generated `.ipynb` are gitignored.
