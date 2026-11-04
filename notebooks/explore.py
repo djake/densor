@@ -100,17 +100,23 @@ df["ts"] = pd.to_datetime(df["ts_utc"], utc=True)
 df["ts_local"] = df["ts"].dt.tz_convert(LOCAL_TZ)
 df["name"] = df["name"].fillna(df["ieee"])
 df["temp"] = df["temperature"] * 9 / 5 + 32 if TEMP_UNIT == "F" else df["temperature"]  # `temperature` stays in Celsius
-df.groupby(["site", "name"]).agg(rows=("ts", "size"), first=("ts_local", "min"), last=("ts_local", "max"))
+df["description"] = df["description"].fillna("")
+HOVER = ["description"]  # shown when hovering a point; names stay short
+
+# One row per sensor, with the description from Zigbee2MQTT (max: a non-empty text sorts after "").
+pd.set_option("display.max_colwidth", None)
+df.groupby(["site", "name"]).agg(description=("description", "max"), rows=("ts", "size"),
+                                 first=("ts_local", "min"), last=("ts_local", "max"))
 
 # %% [markdown]
 # ## Four series: temperature and humidity per sensor
 
 # %%
-px.scatter(df, x="ts_local", y="temp", color="name",
+px.scatter(df, x="ts_local", y="temp", color="name", hover_data=HOVER,
            title=f"Temperature (°{TEMP_UNIT})", labels={"ts_local": "", "temp": f"°{TEMP_UNIT}"}).show()
 
 # %%
-px.scatter(df, x="ts_local", y="humidity", color="name",
+px.scatter(df, x="ts_local", y="humidity", color="name", hover_data=HOVER,
            title="Relative humidity (%)", labels={"ts_local": "", "humidity": "%"}).show()
 
 # %% [markdown]
@@ -123,7 +129,7 @@ p = df.dropna(subset=["pressure"])
 if p.empty:
     print("No pressure readings yet")
 else:
-    px.scatter(p, x="ts_local", y="pressure", color="name",
+    px.scatter(p, x="ts_local", y="pressure", color="name", hover_data=HOVER,
                title="Air pressure (hPa)", labels={"ts_local": "", "pressure": "hPa"}).show()
 
 # %% [markdown]
@@ -141,7 +147,7 @@ px.histogram(df.dropna(subset=["gap_s"]), x="gap_s", color="name", log_y=True, n
 # ## Battery and link quality
 
 # %%
-px.line(df, x="ts_local", y="battery", color="name", title="Battery (%)").show()
+px.line(df, x="ts_local", y="battery", color="name", hover_data=HOVER, title="Battery (%)").show()
 
 # %%
 # Voltage (mV) is the better discharge signal: the battery % is derived from it and moves in coarse steps.
@@ -149,11 +155,11 @@ v = df.dropna(subset=["voltage"])
 if v.empty:
     print("No voltage readings yet")
 else:
-    px.line(v, x="ts_local", y="voltage", color="name", title="Battery voltage (mV)",
+    px.line(v, x="ts_local", y="voltage", color="name", hover_data=HOVER, title="Battery voltage (mV)",
             labels={"ts_local": "", "voltage": "mV"}).show()
 
 # %%
-px.scatter(df, x="ts_local", y="linkquality", color="name", title="Link quality").show()
+px.scatter(df, x="ts_local", y="linkquality", color="name", hover_data=HOVER, title="Link quality").show()
 
 # %% [markdown]
 # ## Your own queries
