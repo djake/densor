@@ -191,6 +191,7 @@ MAX_HOLD = "2h"                                             # stop holding a rea
 ANIM_DAYS = 2                                               # length of the 3-D time slider
 FRAME_EVERY = "1h"
 AT = None                                                   # local time for the surface panels, e.g. "2026-11-08 07:30"; None = latest
+AVG_HOURS = None                                            # e.g. 24: draw the trailing mean over this many hours instead of single readings
 SURFACE_TOL = 0.2                                           # a sensor is "on" a surface within this fraction of the closet's size
 
 cl = df[(df["site"] == CLOSET_SITE) & df["description"].str.contains(CLOSET_WORD, case=False)
@@ -230,6 +231,9 @@ if CAL_WINDOW:
     offsets = w.sub(w.median(axis=1), axis=0).mean()
 corrected = grid - offsets
 values = corrected.sub(corrected.median(axis=1), axis=0) if SHOW == "deviation" else corrected
+# What the 3-D view and the surface panels draw: single readings, or a trailing mean to see past the noise.
+shown = values.rolling(f"{AVG_HOURS}h", min_periods=1).mean() if AVG_HOURS else values
+avg_note = f", {AVG_HOURS} h trailing mean" if AVG_HOURS else ""
 
 
 # %%
@@ -298,10 +302,10 @@ pos_now = positions_at(at_utc)
 now = pd.DataFrame({
     "description": descriptions, "position from": pos_now["source"],
     "x": pos_now["x"].round(1), "y": pos_now["y"].round(1), "z": pos_now["z"].round(1),
-    QUANTITY: grid.loc[at_utc].round(2), "offset": offsets.round(2), "shown": values.loc[at_utc].round(2),
+    QUANTITY: grid.loc[at_utc].round(2), "offset": offsets.round(2), "shown": shown.loc[at_utc].round(2),
 })
 print(f"Showing {at_utc.tz_convert(LOCAL_TZ):%a %Y-%m-%d %H:%M} ({SHOW}; positions in {units}; offsets from CAL_WINDOW: {bool(CAL_WINDOW)})")
-missing = [n for n in names if pd.isna(values.loc[at_utc, n])]
+missing = [n for n in names if pd.isna(shown.loc[at_utc, n])]
 if missing:
     print("No recent reading at this time (older than MAX_HOLD), so not drawn:", missing)
 now
@@ -311,8 +315,8 @@ now
 # ### 3-D view, with a time slider
 
 # %%
-frame_times = values.loc[at_utc - pd.Timedelta(days=ANIM_DAYS):].iloc[::max(1, pd.Timedelta(FRAME_EVERY) // pd.Timedelta(BIN))].index
-all_vals = values.loc[frame_times].to_numpy().ravel()
+frame_times = shown.loc[at_utc - pd.Timedelta(days=ANIM_DAYS):].iloc[::max(1, pd.Timedelta(FRAME_EVERY) // pd.Timedelta(BIN))].index
+all_vals = shown.loc[frame_times].to_numpy().ravel()
 all_vals = all_vals[~np.isnan(all_vals)]
 COLORSCALE = "RdBu_r" if QUANTITY in ("temperature", "dew_point") else "RdBu"   # red = warm, blue = wet
 if SHOW == "deviation":
@@ -332,7 +336,7 @@ def box_trace():
 
 def sensors_trace(t):
     pos = positions_at(t)
-    v = values.loc[t].reindex(pos.index)
+    v = shown.loc[t].reindex(pos.index)
     ok = v.notna()
     return go.Scatter3d(
         x=pos.loc[ok, "x"], y=pos.loc[ok, "y"], z=pos.loc[ok, "z"], mode="markers+text",
@@ -348,7 +352,7 @@ def label(t):
 fig3d = go.Figure(data=[box_trace(), sensors_trace(frame_times[0])],
                   frames=[go.Frame(data=[sensors_trace(t)], traces=[1], name=label(t)) for t in frame_times])
 fig3d.update_layout(
-    coloraxis=color_axis, height=650, title=f"Closet {qname} ({SHOW}, {unit})",
+    coloraxis=color_axis, height=650, title=f"Closet {qname} ({SHOW}{avg_note}, {unit})",
     scene=dict(xaxis_title="x (W→E)", yaxis_title="y (S→N)", zaxis_title="z (height)",
                xaxis=dict(range=[-0.1 * W, 1.1 * W]), yaxis=dict(range=[-0.1 * D, 1.1 * D]), zaxis=dict(range=[-0.1 * H, 1.1 * H]),
                aspectmode="manual",
@@ -380,7 +384,7 @@ def idw(px, py, pv, gx, gy, power=2):
 
 def surface_figure(t):
     pos = positions_at(t)
-    v = values.loc[t].reindex(pos.index)
+    v = shown.loc[t].reindex(pos.index)
     fig = make_subplots(rows=2, cols=3, vertical_spacing=0.16, horizontal_spacing=0.07,
                         subplot_titles=[s[0] for s in SURFACES])
     for i, (title, normal, side, hor, ver, flip) in enumerate(SURFACES):
@@ -407,10 +411,46 @@ def surface_figure(t):
         fig.update_xaxes(range=[dim_of[hor] + ph, -ph] if flip else [-ph, dim_of[hor] + ph], title_text=hor, row=row, col=col)
         fig.update_yaxes(range=[-pv_, dim_of[ver] + pv_], title_text=ver, row=row, col=col)
     fig.update_layout(coloraxis=color_axis, height=720,
-                      title=f"Closet {qname} at {t.tz_convert(LOCAL_TZ):%a %m-%d %H:%M} ({SHOW}, {unit}); walls seen from inside")
+                      title=f"Closet {qname} at {t.tz_convert(LOCAL_TZ):%a %m-%d %H:%M} ({SHOW}{avg_note}, {unit}); walls seen from inside")
     return fig
 
 surface_figure(at_utc).show()
+
+
+# %% [markdown]
+# ### Over time, and humidity versus temperature
+#
+# Per-sensor deviation over time for the chosen `QUANTITY` (a leak should show up as the odd sensor dipping on particular nights; an offset is a constant gap). Below it, absolute-humidity deviation against temperature deviation: a tight line means the humidity pattern is mostly following temperature (sensor coupling or offsets), while a cloud means it carries separate information. Both use the `CAL_WINDOW` offsets if set.
+
+# %%
+last = valid.index[-1]
+span = slice(last - pd.Timedelta(days=ANIM_DAYS), last)
+ts_plot = shown.loc[span].iloc[::max(1, pd.Timedelta("15min") // pd.Timedelta(BIN))]
+ts_plot = ts_plot.rename_axis("ts").reset_index().melt(id_vars="ts", var_name="name", value_name="value")
+ts_plot["ts_local"] = ts_plot["ts"].dt.tz_convert(LOCAL_TZ)
+ts_plot["description"] = ts_plot["name"].map(descriptions)
+px.line(ts_plot, x="ts_local", y="value", color="name", hover_data=["description"],
+        title=f"Closet {qname}, {SHOW}{avg_note} ({unit})", labels={"ts_local": "", "value": unit}).show()
+
+
+def deviation(g):
+    """A grid minus its CAL_WINDOW offsets (if set) and the closet median."""
+    if CAL_WINDOW:
+        w = g.loc[pd.Timestamp(CAL_WINDOW[0], tz=LOCAL_TZ):pd.Timestamp(CAL_WINDOW[1], tz=LOCAL_TZ)]
+        g = g - w.sub(w.median(axis=1), axis=0).mean()
+    return g.sub(g.median(axis=1), axis=0)
+
+d_temp = deviation(t_c) * (9 / 5 if TEMP_UNIT == "F" else 1)
+d_ah = deviation(216.7 * vapour / (t_c + 273.15))
+pair = pd.concat({"d_temp": d_temp.loc[span], "d_ah": d_ah.loc[span]}, axis=1).iloc[::max(1, pd.Timedelta("30min") // pd.Timedelta(BIN))]
+pair = pair.stack(level=1, future_stack=True).dropna().rename_axis(["ts", "name"]).reset_index()
+print(f"Pooled correlation of absolute-humidity and temperature deviations: {pair['d_temp'].corr(pair['d_ah']):.2f}")
+print("Per sensor, over time:")
+print(pair.groupby("name").apply(lambda g: g["d_temp"].corr(g["d_ah"]), include_groups=False).round(2).to_string())
+pair["description"] = pair["name"].map(descriptions)
+px.scatter(pair, x="d_temp", y="d_ah", color="name", hover_data=["description"], opacity=0.5,
+           title="Absolute humidity vs temperature, each as deviation from the closet median",
+           labels={"d_temp": f"temperature deviation (°{TEMP_UNIT})", "d_ah": "absolute humidity deviation (g/m³)"}).show()
 
 
 # %% [markdown]
