@@ -196,6 +196,9 @@ SURFACE_TOL = 0.2                                           # a sensor is "on" a
 cl = df[(df["site"] == CLOSET_SITE) & df["temp"].notna()
         & df["description"].str.contains(CLOSET_WORD, case=False)]
 names = sorted(cl["name"].unique())
+others = df[(df["site"] == CLOSET_SITE) & ~df["name"].isin(names)].groupby("name")["description"].max()
+print(f"{len(names)} closet sensors (description contains {CLOSET_WORD!r}). Not included:")
+print(others.to_string() if len(others) else "  (none)")
 unit = f"°{TEMP_UNIT}"
 
 # One column per sensor on a regular UTC grid. Sensors report on change plus a heartbeat,
@@ -259,7 +262,7 @@ def positions_at(t):
     pos[["x", "y", "z"]] = pos[["x", "y", "z"]].astype(float)
     # Sensors drawn at the same spot would overlap: nudge them apart sideways.
     n_same = pos.groupby([pos["x"].round(3), pos["y"].round(3), pos["z"].round(3)]).cumcount()
-    pos["x"] = pos["x"] + n_same * 0.03 * W
+    pos["x"] = pos["x"] + n_same * 0.08 * W
     return pos
 
 def short(name):
@@ -278,6 +281,9 @@ now = pd.DataFrame({
     "temp": grid.loc[at_utc].round(2), "offset": offsets.round(2), "shown": values.loc[at_utc].round(2),
 })
 print(f"Showing {at_utc.tz_convert(LOCAL_TZ):%a %Y-%m-%d %H:%M} ({SHOW}; positions in {units}; offsets from CAL_WINDOW: {bool(CAL_WINDOW)})")
+missing = [n for n in names if pd.isna(values.loc[at_utc, n])]
+if missing:
+    print("No recent reading at this time (older than MAX_HOLD), so not drawn:", missing)
 now
 
 
