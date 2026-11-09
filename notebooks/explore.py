@@ -164,7 +164,7 @@ px.scatter(df, x="ts_local", y="linkquality", color="name", hover_data=HOVER, ti
 # %% [markdown]
 # ## Closet experiment (Experiment 1)
 #
-# The closet sensors drawn in 3-D, and on each of the six surfaces (top, floor, four walls) as seen from inside. Colour is the **deviation from the closet median** by default, since the wall effect is a few tenths of a degree on top of a shared swing; set `SHOW = "absolute"` for plain temperatures.
+# The closet sensors drawn in 3-D, and on each of the six surfaces (top, floor, four walls) as seen from inside. Colour is the **deviation from the closet median** by default, since the wall effect is a few tenths of a degree on top of a shared swing; set `SHOW = "absolute"` for plain values. `QUANTITY` switches what is drawn: `"temperature"`, `"humidity"` (RH), `"abs_humidity"` (g/m³) or `"dew_point"`. Absolute humidity and dew point separate an air leak (outdoor air is drier, so they drop toward the outdoor value) from a cold surface (they stay the same while RH rises).
 #
 # Positions come from `notebooks/placements.csv` when it exists (see `placements.csv.example`: one row per placement, in cm, with optional start and end times so sensors can be moved). Sensors without a row fall back to `CLOSET_MAP`, a hardcoded corner for each sensor, which is approximate.
 #
@@ -183,6 +183,7 @@ CLOSET_WORD = os.environ.get("CLOSET_WORD", "closet")      # sensors whose descr
 PLACEMENTS = Path(os.environ.get("DENSOR_PLACEMENTS", "placements.csv"))
 CLOSET_CM = os.environ.get("CLOSET_CM")                     # "x,y,z" in cm; default: from placements, else a unit box
 EXTERIOR = ()                                               # e.g. ("north", "west"): marks those walls in the titles
+QUANTITY = "temperature"                                    # "temperature", "abs_humidity" (g/m³), "dew_point" or "humidity" (RH %)
 SHOW = "deviation"                                          # "deviation" (from the closet median) or "absolute"
 CAL_WINDOW = None                                           # ("2026-11-07 18:00", "2026-11-08 18:00") local time, all sensors side by side
 BIN = "5min"                                                # time grid; readings are held until the next one
@@ -192,19 +193,36 @@ FRAME_EVERY = "1h"
 AT = None                                                   # local time for the surface panels, e.g. "2026-11-08 07:30"; None = latest
 SURFACE_TOL = 0.2                                           # a sensor is "on" a surface within this fraction of the closet's size
 
-cl = df[(df["site"] == CLOSET_SITE) & df["temp"].notna()
-        & df["description"].str.contains(CLOSET_WORD, case=False)]
+cl = df[(df["site"] == CLOSET_SITE) & df["description"].str.contains(CLOSET_WORD, case=False)
+        & (df["temperature"].notna() | df["humidity"].notna())]
 names = sorted(cl["name"].unique())
 others = df[(df["site"] == CLOSET_SITE) & ~df["name"].isin(names)].groupby("name")["description"].max()
 print(f"{len(names)} closet sensors (description contains {CLOSET_WORD!r}). Not included:")
 print(others.to_string() if len(others) else "  (none)")
-unit = f"°{TEMP_UNIT}"
+
+LABELS = {"temperature": ("temperature", f"°{TEMP_UNIT}"), "abs_humidity": ("absolute humidity", "g/m³"),
+          "dew_point": ("dew point", f"°{TEMP_UNIT}"), "humidity": ("relative humidity", "% RH")}
+qname, unit = LABELS[QUANTITY]
 
 # One column per sensor on a regular UTC grid. Sensors report on change plus a heartbeat,
 # so a reading holds until the next one (up to MAX_HOLD).
-grid = cl.assign(bin=cl["ts"].dt.floor(BIN)).pivot_table(index="bin", columns="name", values="temp", aggfunc="mean")
-grid = grid.reindex(pd.date_range(grid.index.min(), grid.index.max(), freq=BIN))
-grid = grid.ffill(limit=int(pd.Timedelta(MAX_HOLD) / pd.Timedelta(BIN)))
+def on_grid(col):
+    g = cl.assign(bin=cl["ts"].dt.floor(BIN)).pivot_table(index="bin", columns="name", values=col, aggfunc="mean")
+    g = g.reindex(pd.date_range(g.index.min(), g.index.max(), freq=BIN))
+    return g.ffill(limit=int(pd.Timedelta(MAX_HOLD) / pd.Timedelta(BIN)))
+
+# Temperature and humidity are held separately, then combined (Magnus formula, temperature in °C).
+t_c, rh = on_grid("temperature"), on_grid("humidity")
+vapour = rh / 100 * 6.112 * np.exp(17.62 * t_c / (243.12 + t_c))        # hPa
+if QUANTITY == "temperature":
+    grid = t_c * 9 / 5 + 32 if TEMP_UNIT == "F" else t_c
+elif QUANTITY == "humidity":
+    grid = rh
+elif QUANTITY == "abs_humidity":
+    grid = 216.7 * vapour / (t_c + 273.15)
+else:
+    dp = 243.12 * np.log(vapour / 6.112) / (17.62 - np.log(vapour / 6.112))
+    grid = dp * 9 / 5 + 32 if TEMP_UNIT == "F" else dp
 
 offsets = pd.Series(0.0, index=grid.columns)
 if CAL_WINDOW:
@@ -280,7 +298,7 @@ pos_now = positions_at(at_utc)
 now = pd.DataFrame({
     "description": descriptions, "position from": pos_now["source"],
     "x": pos_now["x"].round(1), "y": pos_now["y"].round(1), "z": pos_now["z"].round(1),
-    "temp": grid.loc[at_utc].round(2), "offset": offsets.round(2), "shown": values.loc[at_utc].round(2),
+    QUANTITY: grid.loc[at_utc].round(2), "offset": offsets.round(2), "shown": values.loc[at_utc].round(2),
 })
 print(f"Showing {at_utc.tz_convert(LOCAL_TZ):%a %Y-%m-%d %H:%M} ({SHOW}; positions in {units}; offsets from CAL_WINDOW: {bool(CAL_WINDOW)})")
 missing = [n for n in names if pd.isna(values.loc[at_utc, n])]
@@ -296,12 +314,13 @@ now
 frame_times = values.loc[at_utc - pd.Timedelta(days=ANIM_DAYS):].iloc[::max(1, pd.Timedelta(FRAME_EVERY) // pd.Timedelta(BIN))].index
 all_vals = values.loc[frame_times].to_numpy().ravel()
 all_vals = all_vals[~np.isnan(all_vals)]
+COLORSCALE = "RdBu_r" if QUANTITY in ("temperature", "dew_point") else "RdBu"   # red = warm, blue = wet
 if SHOW == "deviation":
     r = max(float(np.percentile(np.abs(all_vals), 98)), 0.1) if len(all_vals) else 1.0
-    color_axis = dict(colorscale="RdBu_r", cmin=-r, cmax=r, cmid=0, colorbar=dict(title=f"{unit} from median"))
+    color_axis = dict(colorscale=COLORSCALE, cmin=-r, cmax=r, cmid=0, colorbar=dict(title=f"{unit} from median"))
 else:
     lo, hi = (np.percentile(all_vals, [2, 98]) if len(all_vals) else (0, 1))
-    color_axis = dict(colorscale="RdYlBu_r", cmin=float(lo), cmax=float(hi), colorbar=dict(title=unit))
+    color_axis = dict(colorscale=COLORSCALE, cmin=float(lo), cmax=float(hi), colorbar=dict(title=unit))
 
 def box_trace():
     corners = list(itertools.product((0, W), (0, D), (0, H)))
@@ -329,7 +348,7 @@ def label(t):
 fig3d = go.Figure(data=[box_trace(), sensors_trace(frame_times[0])],
                   frames=[go.Frame(data=[sensors_trace(t)], traces=[1], name=label(t)) for t in frame_times])
 fig3d.update_layout(
-    coloraxis=color_axis, height=650, title=f"Closet temperature ({SHOW}, {unit})",
+    coloraxis=color_axis, height=650, title=f"Closet {qname} ({SHOW}, {unit})",
     scene=dict(xaxis_title="x (W→E)", yaxis_title="y (S→N)", zaxis_title="z (height)",
                xaxis=dict(range=[-0.1 * W, 1.1 * W]), yaxis=dict(range=[-0.1 * D, 1.1 * D]), zaxis=dict(range=[-0.1 * H, 1.1 * H]),
                aspectmode="manual",
@@ -388,7 +407,7 @@ def surface_figure(t):
         fig.update_xaxes(range=[dim_of[hor] + ph, -ph] if flip else [-ph, dim_of[hor] + ph], title_text=hor, row=row, col=col)
         fig.update_yaxes(range=[-pv_, dim_of[ver] + pv_], title_text=ver, row=row, col=col)
     fig.update_layout(coloraxis=color_axis, height=720,
-                      title=f"Closet surfaces at {t.tz_convert(LOCAL_TZ):%a %m-%d %H:%M} ({SHOW}, {unit}); walls seen from inside")
+                      title=f"Closet {qname} at {t.tz_convert(LOCAL_TZ):%a %m-%d %H:%M} ({SHOW}, {unit}); walls seen from inside")
     return fig
 
 surface_figure(at_utc).show()
