@@ -162,6 +162,231 @@ else:
 px.scatter(df, x="ts_local", y="linkquality", color="name", hover_data=HOVER, title="Link quality").show()
 
 # %% [markdown]
+# ## Closet experiment (Experiment 1)
+#
+# The closet sensors drawn in 3-D, and on each of the six surfaces (top, floor, four walls) as seen from inside. Colour is the **deviation from the closet median** by default, since the wall effect is a few tenths of a degree on top of a shared swing; set `SHOW = "absolute"` for plain temperatures.
+#
+# Positions come from `notebooks/placements.csv` when it exists (see `placements.csv.example`: one row per placement, in cm, with optional start and end times so sensors can be moved). Sensors without a row fall back to their description ("southwest corner floor" and so on) and are drawn at the closet's corners, which is approximate.
+#
+# A surface needs at least 3 sensors on it to be filled in (inverse-distance weighting); with fewer, only the sensor markers are shown. The fill is a rough interpolation, not a measurement between sensors.
+
+# %%
+import itertools
+import re
+from pathlib import Path
+
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+CLOSET_SITE = os.environ.get("CLOSET_SITE", "ch")
+CLOSET_WORD = os.environ.get("CLOSET_WORD", "closet")      # sensors whose description mentions this
+PLACEMENTS = Path(os.environ.get("DENSOR_PLACEMENTS", "placements.csv"))
+CLOSET_CM = os.environ.get("CLOSET_CM")                     # "x,y,z" in cm; default: from placements, else a unit box
+EXTERIOR = ()                                               # e.g. ("north", "west"): marks those walls in the titles
+SHOW = "deviation"                                          # "deviation" (from the closet median) or "absolute"
+CAL_WINDOW = None                                           # ("2026-11-07 18:00", "2026-11-08 18:00") local time, all sensors side by side
+BIN = "5min"                                                # time grid; readings are held until the next one
+MAX_HOLD = "2h"                                             # stop holding a reading this long after it was reported
+ANIM_DAYS = 2                                               # length of the 3-D time slider
+FRAME_EVERY = "1h"
+AT = None                                                   # local time for the surface panels, e.g. "2026-11-08 07:30"; None = latest
+SURFACE_TOL = 0.2                                           # a sensor is "on" a surface within this fraction of the closet's size
+
+cl = df[(df["site"] == CLOSET_SITE) & df["temp"].notna()
+        & df["description"].str.contains(CLOSET_WORD, case=False)]
+names = sorted(cl["name"].unique())
+unit = f"°{TEMP_UNIT}"
+
+# One column per sensor on a regular UTC grid. Sensors report on change plus a heartbeat,
+# so a reading holds until the next one (up to MAX_HOLD).
+grid = cl.assign(bin=cl["ts"].dt.floor(BIN)).pivot_table(index="bin", columns="name", values="temp", aggfunc="mean")
+grid = grid.reindex(pd.date_range(grid.index.min(), grid.index.max(), freq=BIN))
+grid = grid.ffill(limit=int(pd.Timedelta(MAX_HOLD) / pd.Timedelta(BIN)))
+
+offsets = pd.Series(0.0, index=grid.columns)
+if CAL_WINDOW:
+    w = grid.loc[pd.Timestamp(CAL_WINDOW[0], tz=LOCAL_TZ):pd.Timestamp(CAL_WINDOW[1], tz=LOCAL_TZ)]
+    offsets = w.sub(w.median(axis=1), axis=0).mean()
+corrected = grid - offsets
+values = corrected.sub(corrected.median(axis=1), axis=0) if SHOW == "deviation" else corrected
+
+
+# %%
+# Positions: placements.csv where present, else the description (corners of the closet).
+def parse_description(text):
+    t = text.lower()
+    def pick(low, high):
+        return 1.0 if re.search(high, t) else 0.0 if re.search(low, t) else 0.5
+    return (pick(r"west", r"east"), pick(r"south", r"north"),
+            pick(r"\bfloor\b|\bbottom\b", r"\btop\b|\bshelf\b|\bceiling\b"))
+
+placed = None
+if PLACEMENTS.exists():
+    placed = pd.read_csv(PLACEMENTS)
+    for c in ("start_utc", "end_utc"):
+        placed[c] = pd.to_datetime(placed[c], utc=True) if c in placed else pd.NaT
+    placed = placed.rename(columns={"x_cm": "x", "y_cm": "y", "z_cm": "z"})
+
+if CLOSET_CM:
+    dims = tuple(float(v) for v in CLOSET_CM.split(","))
+elif placed is not None:
+    dims = tuple(float(max(placed[a].max(), 1)) for a in "xyz")
+else:
+    dims = (1.0, 1.0, 1.0)
+W, D, H = dims
+dim_of = dict(zip("xyz", dims))
+units = "cm" if (CLOSET_CM or placed is not None) else "fraction of closet"
+
+descriptions = cl.groupby("name")["description"].last()
+
+def positions_at(t):
+    """x, y, z per sensor at time t (UTC)."""
+    rows = {}
+    for name in names:
+        row = None
+        if placed is not None:
+            p = placed[(placed["name"] == name)
+                       & (placed["start_utc"].isna() | (placed["start_utc"] <= t))
+                       & (placed["end_utc"].isna() | (t < placed["end_utc"]))]
+            if len(p):
+                row = (p.iloc[-1]["x"], p.iloc[-1]["y"], p.iloc[-1]["z"], "placements.csv")
+        if row is None:
+            fx, fy, fz = parse_description(descriptions[name])
+            row = (fx * W, fy * D, fz * H, "description")
+        rows[name] = row
+    pos = pd.DataFrame(rows, index=["x", "y", "z", "source"]).T
+    pos[["x", "y", "z"]] = pos[["x", "y", "z"]].astype(float)
+    # Sensors drawn at the same spot would overlap: nudge them apart sideways.
+    n_same = pos.groupby([pos["x"].round(3), pos["y"].round(3), pos["z"].round(3)]).cumcount()
+    pos["x"] = pos["x"] + n_same * 0.03 * W
+    return pos
+
+def short(name):
+    parts = name.split("-")
+    return parts[-1][-4:]
+
+# Which time to show in the surface panels.
+valid = values.dropna(how="all")
+at_utc = (pd.Timestamp(AT, tz=LOCAL_TZ).tz_convert("UTC") if AT else valid.index[-1])
+at_utc = valid.index[valid.index.get_indexer([at_utc], method="nearest")[0]]
+
+pos_now = positions_at(at_utc)
+now = pd.DataFrame({
+    "description": descriptions, "position from": pos_now["source"],
+    "x": pos_now["x"].round(1), "y": pos_now["y"].round(1), "z": pos_now["z"].round(1),
+    "temp": grid.loc[at_utc].round(2), "offset": offsets.round(2), "shown": values.loc[at_utc].round(2),
+})
+print(f"Showing {at_utc.tz_convert(LOCAL_TZ):%a %Y-%m-%d %H:%M} ({SHOW}; positions in {units}; offsets from CAL_WINDOW: {bool(CAL_WINDOW)})")
+now
+
+
+# %% [markdown]
+# ### 3-D view, with a time slider
+
+# %%
+frame_times = values.loc[at_utc - pd.Timedelta(days=ANIM_DAYS):].iloc[::max(1, pd.Timedelta(FRAME_EVERY) // pd.Timedelta(BIN))].index
+all_vals = values.loc[frame_times].to_numpy().ravel()
+all_vals = all_vals[~np.isnan(all_vals)]
+if SHOW == "deviation":
+    r = max(float(np.percentile(np.abs(all_vals), 98)), 0.1) if len(all_vals) else 1.0
+    color_axis = dict(colorscale="RdBu_r", cmin=-r, cmax=r, cmid=0, colorbar=dict(title=f"{unit} from median"))
+else:
+    lo, hi = (np.percentile(all_vals, [2, 98]) if len(all_vals) else (0, 1))
+    color_axis = dict(colorscale="RdYlBu_r", cmin=float(lo), cmax=float(hi), colorbar=dict(title=unit))
+
+def box_trace():
+    corners = list(itertools.product((0, W), (0, D), (0, H)))
+    xs, ys, zs = [], [], []
+    for a, b in itertools.combinations(corners, 2):
+        if sum(p != q for p, q in zip(a, b)) == 1:
+            xs += [a[0], b[0], None]; ys += [a[1], b[1], None]; zs += [a[2], b[2], None]
+    return go.Scatter3d(x=xs, y=ys, z=zs, mode="lines", line=dict(color="gray", width=3), hoverinfo="skip", showlegend=False)
+
+def sensors_trace(t):
+    pos = positions_at(t)
+    v = values.loc[t].reindex(pos.index)
+    ok = v.notna()
+    return go.Scatter3d(
+        x=pos.loc[ok, "x"], y=pos.loc[ok, "y"], z=pos.loc[ok, "z"], mode="markers+text",
+        text=[short(n) for n in pos.index[ok]], textposition="top center",
+        marker=dict(size=9, color=v[ok], coloraxis="coloraxis", line=dict(color="black", width=1)),
+        customdata=np.column_stack([pos.index[ok], descriptions.reindex(pos.index[ok]), v[ok].round(2)]),
+        hovertemplate="%{customdata[0]}<br>%{customdata[1]}<br>%{customdata[2]} " + unit + "<extra></extra>",
+        showlegend=False)
+
+def label(t):
+    return f"{t.tz_convert(LOCAL_TZ):%a %m-%d %H:%M}"
+
+fig3d = go.Figure(data=[box_trace(), sensors_trace(frame_times[0])],
+                  frames=[go.Frame(data=[sensors_trace(t)], traces=[1], name=label(t)) for t in frame_times])
+fig3d.update_layout(
+    coloraxis=color_axis, height=650, title=f"Closet temperature ({SHOW}, {unit})",
+    scene=dict(xaxis_title="x (W→E)", yaxis_title="y (S→N)", zaxis_title="z (height)",
+               xaxis=dict(range=[-0.1 * W, 1.1 * W]), yaxis=dict(range=[-0.1 * D, 1.1 * D]), zaxis=dict(range=[-0.1 * H, 1.1 * H]),
+               aspectmode="manual",
+               aspectratio=dict(x=W / max(dims), y=D / max(dims), z=H / max(dims))),
+    updatemenus=[dict(type="buttons", direction="left", x=0.0, y=0.0, buttons=[
+        dict(label="Play", method="animate", args=[None, dict(frame=dict(duration=300, redraw=True), fromcurrent=True)]),
+        dict(label="Pause", method="animate", args=[[None], dict(frame=dict(duration=0), mode="immediate")])])],
+    sliders=[dict(active=0, currentvalue=dict(prefix="Time: "), pad=dict(t=30), steps=[
+        dict(label=label(t), method="animate", args=[[label(t)], dict(mode="immediate", frame=dict(duration=0, redraw=True))])
+        for t in frame_times])],
+)
+fig3d.show()
+
+
+# %% [markdown]
+# ### The six surfaces, seen from inside the closet
+
+# %%
+# title, axis the surface is perpendicular to, which side (0 or max), horizontal axis, vertical axis, flip horizontal
+SURFACES = [
+    ("Top", "z", 1, "x", "y", False), ("North wall", "y", 1, "x", "z", False), ("East wall", "x", 1, "y", "z", True),
+    ("Floor", "z", 0, "x", "y", False), ("South wall", "y", 0, "x", "z", True), ("West wall", "x", 0, "y", "z", False),
+]
+
+def idw(px, py, pv, gx, gy, power=2):
+    d2 = (gx[..., None] - px) ** 2 + (gy[..., None] - py) ** 2
+    w = 1.0 / np.maximum(d2, 1e-9) ** (power / 2)
+    return (w * pv).sum(-1) / w.sum(-1)
+
+def surface_figure(t):
+    pos = positions_at(t)
+    v = values.loc[t].reindex(pos.index)
+    fig = make_subplots(rows=2, cols=3, vertical_spacing=0.16, horizontal_spacing=0.07,
+                        subplot_titles=[s[0] for s in SURFACES])
+    for i, (title, normal, side, hor, ver, flip) in enumerate(SURFACES):
+        row, col = divmod(i, 3)
+        row, col = row + 1, col + 1
+        on = (pos[normal] - side * dim_of[normal]).abs() <= SURFACE_TOL * dim_of[normal]
+        ok = on & v.notna()
+        px, py, pv = pos.loc[ok, hor].to_numpy(), pos.loc[ok, ver].to_numpy(), v[ok].to_numpy()
+        mark = " (exterior)" if title.split()[0].lower() in EXTERIOR else ""
+        fig.layout.annotations[i].text = f"{title}{mark}: {int(ok.sum())} sensors"
+        if len(pv) >= 3:
+            gx = np.linspace(0, dim_of[hor], 40)
+            gy = np.linspace(0, dim_of[ver], 40)
+            z = idw(px, py, pv, *np.meshgrid(gx, gy))
+            fig.add_trace(go.Heatmap(x=gx, y=gy, z=z, coloraxis="coloraxis", hoverinfo="skip"), row=row, col=col)
+        if len(pv):
+            fig.add_trace(go.Scatter(
+                x=px, y=py, mode="markers+text", text=[f"{x:+.1f}" if SHOW == "deviation" else f"{x:.1f}" for x in pv],
+                textposition="top center", showlegend=False,
+                marker=dict(size=14, color=pv, coloraxis="coloraxis", line=dict(color="black", width=1)),
+                customdata=[[n] for n in pos.index[ok]], hovertemplate="%{customdata[0]}<extra></extra>"),
+                row=row, col=col)
+        ph, pv_ = 0.12 * dim_of[hor], 0.12 * dim_of[ver]
+        fig.update_xaxes(range=[dim_of[hor] + ph, -ph] if flip else [-ph, dim_of[hor] + ph], title_text=hor, row=row, col=col)
+        fig.update_yaxes(range=[-pv_, dim_of[ver] + pv_], title_text=ver, row=row, col=col)
+    fig.update_layout(coloraxis=color_axis, height=720,
+                      title=f"Closet surfaces at {t.tz_convert(LOCAL_TZ):%a %m-%d %H:%M} ({SHOW}, {unit}); walls seen from inside")
+    return fig
+
+surface_figure(at_utc).show()
+
+
+# %% [markdown]
 # ## Your own queries
 #
 # `con` is a live DuckDB connection and `roots` maps each site to its location, so you can query the files directly, for example:
