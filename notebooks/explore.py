@@ -166,13 +166,12 @@ px.scatter(df, x="ts_local", y="linkquality", color="name", hover_data=HOVER, ti
 #
 # The closet sensors drawn in 3-D, and on each of the six surfaces (top, floor, four walls) as seen from inside. Colour is the **deviation from the closet median** by default, since the wall effect is a few tenths of a degree on top of a shared swing; set `SHOW = "absolute"` for plain temperatures.
 #
-# Positions come from `notebooks/placements.csv` when it exists (see `placements.csv.example`: one row per placement, in cm, with optional start and end times so sensors can be moved). Sensors without a row fall back to their description ("southwest corner floor" and so on) and are drawn at the closet's corners, which is approximate.
+# Positions come from `notebooks/placements.csv` when it exists (see `placements.csv.example`: one row per placement, in cm, with optional start and end times so sensors can be moved). Sensors without a row fall back to `CLOSET_MAP`, a hardcoded corner for each sensor, which is approximate.
 #
 # A surface needs at least 3 sensors on it to be filled in (inverse-distance weighting); with fewer, only the sensor markers are shown. The fill is a rough interpolation, not a measurement between sensors.
 
 # %%
 import itertools
-import re
 from pathlib import Path
 
 import numpy as np
@@ -216,13 +215,16 @@ values = corrected.sub(corrected.median(axis=1), axis=0) if SHOW == "deviation" 
 
 
 # %%
-# Positions: placements.csv where present, else the description (corners of the closet).
-def parse_description(text):
-    t = text.lower()
-    def pick(low, high):
-        return 1.0 if re.search(high, t) else 0.0 if re.search(low, t) else 0.5
-    return (pick(r"west", r"east"), pick(r"south", r"north"),
-            pick(r"\bfloor\b|\bbottom\b", r"\btop\b|\bshelf\b|\bceiling\b"))
+# Positions: placements.csv where present, else this map of closet corners as fractions of the closet
+# (x: 0 west .. 1 east, y: 0 south .. 1 north, z: 0 floor .. 1 top), from the Zigbee2MQTT descriptions.
+CLOSET_MAP = {
+    "densor-ch-02b-25494000601274": (0, 1, 0),  # northwest corner floor
+    "densor-ch-02b-26300400159665": (1, 1, 0),  # northeast corner floor
+    "densor-ch-02b-26300400477224": (1, 0, 0),  # southeast floor
+    "densor-ch-02p-25494000023339": (0, 0, 0),  # southwest corner floor
+    "densor-ch-02b-26300400139758": (1, 0, 1),  # southeast, top shelf
+    "densor-ch-02b-26300400567826": (0, 0, 1),  # southwest corner top (description truncated in the list)
+}
 
 placed = None
 if PLACEMENTS.exists():
@@ -255,8 +257,8 @@ def positions_at(t):
             if len(p):
                 row = (p.iloc[-1]["x"], p.iloc[-1]["y"], p.iloc[-1]["z"], "placements.csv")
         if row is None:
-            fx, fy, fz = parse_description(descriptions[name])
-            row = (fx * W, fy * D, fz * H, "description")
+            fx, fy, fz = CLOSET_MAP.get(name, (0.5, 0.5, 0.5))
+            row = (fx * W, fy * D, fz * H, "CLOSET_MAP" if name in CLOSET_MAP else "unmapped (centre)")
         rows[name] = row
     pos = pd.DataFrame(rows, index=["x", "y", "z", "source"]).T
     pos[["x", "y", "z"]] = pos[["x", "y", "z"]].astype(float)
