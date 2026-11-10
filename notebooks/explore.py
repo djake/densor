@@ -248,6 +248,11 @@ CLOSET_MAP = {
     "densor-ch-02b-26300400567826": (0, 0, 1),  # southwest corner top (description truncated in the list)
 }
 
+# Moves: (sensor, local time it was moved, (x, y, z) fractions as above). The latest move at or before a
+# given time wins, so the 3-D view follows a sensor as it is relocated. Example:
+#   MOVES = [("densor-ch-02b-26300400159665", "2026-11-10 15:00", (1, 1, 1))]
+MOVES = []
+
 placed = None
 if PLACEMENTS.exists():
     placed = pd.read_csv(PLACEMENTS)
@@ -279,8 +284,14 @@ def positions_at(t):
             if len(p):
                 row = (p.iloc[-1]["x"], p.iloc[-1]["y"], p.iloc[-1]["z"], "placements.csv")
         if row is None:
-            fx, fy, fz = CLOSET_MAP.get(name, (0.5, 0.5, 0.5))
-            row = (fx * W, fy * D, fz * H, "CLOSET_MAP" if name in CLOSET_MAP else "unmapped (centre)")
+            moved = [(pd.Timestamp(when, tz=LOCAL_TZ), f) for n, when, f in MOVES if n == name]
+            moved = sorted((w, f) for w, f in moved if w <= t)
+            if moved:
+                fx, fy, fz = moved[-1][1]
+                row = (fx * W, fy * D, fz * H, "MOVES")
+            else:
+                fx, fy, fz = CLOSET_MAP.get(name, (0.5, 0.5, 0.5))
+                row = (fx * W, fy * D, fz * H, "CLOSET_MAP" if name in CLOSET_MAP else "unmapped (centre)")
         rows[name] = row
     pos = pd.DataFrame(rows, index=["x", "y", "z", "source"]).T
     pos[["x", "y", "z"]] = pos[["x", "y", "z"]].astype(float)
@@ -451,6 +462,41 @@ pair["description"] = pair["name"].map(descriptions)
 px.scatter(pair, x="d_temp", y="d_ah", color="name", hover_data=["description"], opacity=0.5,
            title="Absolute humidity vs temperature, each as deviation from the closet median",
            labels={"d_temp": f"temperature deviation (°{TEMP_UNIT})", "d_ah": "absolute humidity deviation (g/m³)"}).show()
+
+
+# %% [markdown]
+# ### Spot check: two sensors side by side
+#
+# List each period when two sensors sat next to each other as `(sensor_a, sensor_b, start, end)` in local time. For each, the difference `a - b` is summarised for temperature, relative humidity and absolute humidity. Sonoff quotes ±0.2 °C and ±2 % RH per sensor, so two sensors can legitimately differ by up to about twice that (set in `SPEC_T_C` and `SPEC_RH`). A difference well inside that is not worth calibrating; one well outside it means a sensor is off or the two were not in the same air.
+
+# %%
+SPOT_CHECKS = []   # e.g. [("densor-ch-02b-26300400159665", "densor-ch-02b-26300400477224", "2026-11-10 13:45", "2026-11-10 15:45")]
+SPEC_T_C = 0.2     # ±°C per sensor
+SPEC_RH = 2.0      # ±% RH per sensor
+
+ah = 216.7 * vapour / (t_c + 273.15)
+rows, diffs = [], []
+for a, b, start, end in SPOT_CHECKS:
+    sl = slice(pd.Timestamp(start, tz=LOCAL_TZ), pd.Timestamp(end, tz=LOCAL_TZ))
+    for label, g, scale, spec in [(f"temperature (°{TEMP_UNIT})", t_c, 9 / 5 if TEMP_UNIT == "F" else 1, 2 * SPEC_T_C),
+                                  ("relative humidity (% RH)", rh, 1, 2 * SPEC_RH), ("absolute humidity (g/m³)", ah, 1, None)]:
+        d = ((g[a] - g[b]).loc[sl].dropna()) * scale
+        if len(d) == 0:
+            rows.append({"a": short(a), "b": short(b), "quantity": label, "n": 0})
+            continue
+        limit = spec * scale if spec else None
+        rows.append({"a": short(a), "b": short(b), "quantity": label, "n": len(d), "mean a-b": round(d.mean(), 2),
+                     "std": round(d.std(), 2), "worst-case spec": None if limit is None else round(limit, 2),
+                     "within spec": None if limit is None else abs(d.mean()) <= limit})
+        diffs.append(d.rename(f"{short(a)}-{short(b)} {label}").to_frame("diff").assign(series=f"{short(a)} - {short(b)}", quantity=label))
+print("Sensors are named by their last four serial digits.")
+spot = pd.DataFrame(rows)
+if len(diffs):
+    dd = pd.concat(diffs).rename_axis("ts").reset_index()
+    dd["ts_local"] = dd["ts"].dt.tz_convert(LOCAL_TZ)
+    px.line(dd, x="ts_local", y="diff", color="series", facet_row="quantity", height=650,
+            labels={"ts_local": "", "diff": "a - b"}, title="Difference between side-by-side sensors").update_yaxes(matches=None).show()
+spot
 
 
 # %% [markdown]
