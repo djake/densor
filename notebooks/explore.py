@@ -389,7 +389,7 @@ fig3d.show()
 
 
 # %% [markdown]
-# ### The six surfaces, seen from inside the closet
+# ### The six surfaces, seen from inside the closet, with a time slider
 
 # %%
 # title, axis the surface is perpendicular to, which side (0 or max), horizontal axis, vertical axis, flip horizontal
@@ -403,39 +403,66 @@ def idw(px, py, pv, gx, gy, power=2):
     w = 1.0 / np.maximum(d2, 1e-9) ** (power / 2)
     return (w * pv).sum(-1) / w.sum(-1)
 
-def surface_figure(t):
+def surface_data(t):
+    """Per surface: the sensors on it at time t, their values, and an interpolated plane when there are at least 3."""
     pos = positions_at(t)
     v = shown.loc[t].reindex(pos.index)
-    fig = make_subplots(rows=2, cols=3, vertical_spacing=0.16, horizontal_spacing=0.07,
-                        subplot_titles=[s[0] for s in SURFACES])
-    for i, (title, normal, side, hor, ver, flip) in enumerate(SURFACES):
-        row, col = divmod(i, 3)
-        row, col = row + 1, col + 1
+    out = []
+    for title, normal, side, hor, ver, flip in SURFACES:
         on = (pos[normal] - side * dim_of[normal]).abs() <= SURFACE_TOL * dim_of[normal]
         ok = on & v.notna()
         px, py, pv = pos.loc[ok, hor].to_numpy(), pos.loc[ok, ver].to_numpy(), v[ok].to_numpy()
+        gx, gy = np.linspace(0, dim_of[hor], 40), np.linspace(0, dim_of[ver], 40)
+        z = idw(px, py, pv, *np.meshgrid(gx, gy)) if len(pv) >= 3 else np.full((40, 40), np.nan)
         mark = " (exterior)" if title.split()[0].lower() in EXTERIOR else ""
-        fig.layout.annotations[i].text = f"{title}{mark}: {int(ok.sum())} sensors"
-        if len(pv) >= 3:
-            gx = np.linspace(0, dim_of[hor], 40)
-            gy = np.linspace(0, dim_of[ver], 40)
-            z = idw(px, py, pv, *np.meshgrid(gx, gy))
-            fig.add_trace(go.Heatmap(x=gx, y=gy, z=z, coloraxis="coloraxis", hoverinfo="skip"), row=row, col=col)
-        if len(pv):
-            fig.add_trace(go.Scatter(
-                x=px, y=py, mode="markers+text", text=[f"{x:+.1f}" if SHOW == "deviation" else f"{x:.1f}" for x in pv],
-                textposition="top center", showlegend=False,
-                marker=dict(size=14, color=pv, coloraxis="coloraxis", line=dict(color="black", width=1)),
-                customdata=[[n] for n in pos.index[ok]], hovertemplate="%{customdata[0]}<extra></extra>"),
-                row=row, col=col)
+        out.append(dict(title=f"{title}{mark}: {int(ok.sum())} sensors", gx=gx, gy=gy, z=z, px=px, py=py, pv=pv,
+                        text=[f"{x:+.1f}" if SHOW == "deviation" else f"{x:.1f}" for x in pv], names=list(pos.index[ok])))
+    return out
+
+def surface_traces(t):
+    """Two traces per surface (plane, then sensors), always in the same order so frames can update them."""
+    traces = []
+    for d in surface_data(t):
+        traces.append(go.Heatmap(x=d["gx"], y=d["gy"], z=d["z"], coloraxis="coloraxis", hoverinfo="skip"))
+        traces.append(go.Scatter(
+            x=d["px"], y=d["py"], mode="markers+text", text=d["text"], textposition="top center", showlegend=False,
+            marker=dict(size=14, color=d["pv"], coloraxis="coloraxis", line=dict(color="black", width=1)),
+            customdata=[[n] for n in d["names"]], hovertemplate="%{customdata[0]}<extra></extra>"))
+    return traces
+
+def surface_title(t):
+    return f"Closet {qname} at {t.tz_convert(LOCAL_TZ):%a %m-%d %H:%M} ({SHOW}{avg_note}, {unit}); walls seen from inside"
+
+def surface_figure(times):
+    fig = make_subplots(rows=2, cols=3, vertical_spacing=0.16, horizontal_spacing=0.07,
+                        subplot_titles=[s[0] for s in SURFACES])
+    first = surface_traces(times[-1])
+    for i, tr in enumerate(first):
+        fig.add_trace(tr, row=i // 2 // 3 + 1, col=i // 2 % 3 + 1)
+    for i, (title, normal, side, hor, ver, flip) in enumerate(SURFACES):
+        row, col = divmod(i, 3)
         ph, pv_ = 0.12 * dim_of[hor], 0.12 * dim_of[ver]
-        fig.update_xaxes(range=[dim_of[hor] + ph, -ph] if flip else [-ph, dim_of[hor] + ph], title_text=hor, row=row, col=col)
-        fig.update_yaxes(range=[-pv_, dim_of[ver] + pv_], title_text=ver, row=row, col=col)
-    fig.update_layout(coloraxis=color_axis, height=720,
-                      title=f"Closet {qname} at {t.tz_convert(LOCAL_TZ):%a %m-%d %H:%M} ({SHOW}{avg_note}, {unit}); walls seen from inside")
+        fig.update_xaxes(range=[dim_of[hor] + ph, -ph] if flip else [-ph, dim_of[hor] + ph], title_text=hor, row=row + 1, col=col + 1)
+        fig.update_yaxes(range=[-pv_, dim_of[ver] + pv_], title_text=ver, row=row + 1, col=col + 1)
+    notes = [a.to_plotly_json() for a in fig.layout.annotations]
+
+    def frame(t):
+        ann = [dict(n, text=d["title"]) for n, d in zip(notes, surface_data(t))]
+        return go.Frame(data=surface_traces(t), traces=list(range(len(first))), name=label(t),
+                        layout=dict(annotations=ann, title=dict(text=surface_title(t))))
+
+    frames = [frame(t) for t in times]
+    fig.frames = frames
+    fig.update_layout(annotations=frames[-1].layout.annotations, coloraxis=color_axis, height=760, title=surface_title(times[-1]),
+        updatemenus=[dict(type="buttons", direction="left", x=0.0, y=-0.08, buttons=[
+            dict(label="Play", method="animate", args=[None, dict(frame=dict(duration=300, redraw=True), fromcurrent=True)]),
+            dict(label="Pause", method="animate", args=[[None], dict(frame=dict(duration=0), mode="immediate")])])],
+        sliders=[dict(active=len(times) - 1, currentvalue=dict(prefix="Time: "), pad=dict(t=30), y=-0.02, steps=[
+            dict(label=label(t), method="animate", args=[[label(t)], dict(mode="immediate", frame=dict(duration=0, redraw=True))])
+            for t in times])])
     return fig
 
-surface_figure(at_utc).show()
+surface_figure(frame_times).show()
 
 
 # %% [markdown]
