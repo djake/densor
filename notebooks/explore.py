@@ -166,7 +166,7 @@ px.scatter(df, x="ts_local", y="linkquality", color="name", hover_data=HOVER, ti
 #
 # The closet sensors drawn in 3-D, and on each of the six surfaces (top, floor, four walls) as seen from inside. Colour is the **deviation from the closet median** by default, since the wall effect is a few tenths of a degree on top of a shared swing; set `SHOW = "absolute"` for plain values. `QUANTITY` switches what is drawn: `"temperature"`, `"humidity"` (RH), `"abs_humidity"` (g/m³) or `"dew_point"`. Absolute humidity and dew point separate an air leak (outdoor air is drier, so they drop toward the outdoor value) from a cold surface (they stay the same while RH rises).
 #
-# Positions come from `notebooks/placements.csv` when it exists (see `placements.csv.example`: one row per placement, in cm, with optional start and end times so sensors can be moved). Sensors without a row fall back to `CLOSET_MAP`, a hardcoded corner for each sensor, which is approximate.
+# Positions come from `notebooks/placements.csv` when it exists (see `placements.csv.example`: one row per placement, in cm, with optional start and end times so sensors can be moved). The closet's sensors are the ones listed in `CLOSET_MAP`, a hardcoded corner for each, which is approximate; descriptions are not used.
 #
 # A surface needs at least 3 sensors on it to be filled in (inverse-distance weighting); with fewer, only the sensor markers are shown. The fill is a rough interpolation, not a measurement between sensors.
 
@@ -179,7 +179,6 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 CLOSET_SITE = os.environ.get("CLOSET_SITE", "ch")
-CLOSET_WORD = os.environ.get("CLOSET_WORD", "closet")      # sensors whose description mentions this
 PLACEMENTS = Path(os.environ.get("DENSOR_PLACEMENTS", "placements.csv"))
 CLOSET_CM = os.environ.get("CLOSET_CM")                     # "x,y,z" in cm; default: from placements, else a unit box
 EXTERIOR = ()                                               # e.g. ("north", "west"): marks those walls in the titles
@@ -194,12 +193,34 @@ AT = None                                                   # local time for the
 AVG_HOURS = None                                            # e.g. 24: draw the trailing mean over this many hours instead of single readings
 SURFACE_TOL = 0.2                                           # a sensor is "on" a surface within this fraction of the closet's size
 
-cl = df[(df["site"] == CLOSET_SITE) & df["description"].str.contains(CLOSET_WORD, case=False)
+# Positions: placements.csv where present, else this map of closet corners as fractions of the closet
+# (x: 0 west .. 1 east, y: 0 south .. 1 north, z: 0 floor .. 1 top), from the Zigbee2MQTT descriptions.
+CLOSET_MAP = {
+    "densor-ch-02b-25494000601274": (0, 1, 0),  # northwest corner floor
+    "densor-ch-02b-26300400159665": (1, 1, 0),  # northeast corner floor
+    "densor-ch-02b-26300400477224": (1, 0, 0),  # southeast floor
+    "densor-ch-02p-25494000023339": (0, 0, 0),  # southwest corner floor
+    "densor-ch-02b-26300400139758": (1, 0, 1),  # southeast, top shelf
+    "densor-ch-02b-26300400567826": (0, 0, 1),  # southwest corner top (description truncated in the list)
+    "densor-ch-02b-26300400333849": (0, 1, 1),  # northwest corner ceiling (final position; see MOVES)
+    "densor-ch-02b-26300400102426": (1, 1, 1),  # northeast corner ceiling (final position; see MOVES)
+}
+
+# Moves: (sensor, local time it was moved, (x, y, z) fractions as above). The latest move at or before a
+# given time wins, so the 3-D view follows a sensor as it is relocated. Example:
+#   MOVES = [("densor-ch-02b-26300400159665", "2026-11-10 15:00", (1, 1, 1))]
+MOVES = [
+    # Nov 10: the two ceiling-corner sensors start out on the floor beside the north floor sensors for a spot check.
+    # When they go up, add ("<sensor>", "<local time they were moved>", (x, 1, 1)) for each, which puts them back at the ceiling.
+    ("densor-ch-02b-26300400333849", "2026-11-10 13:40", (0, 1, 0)),
+    ("densor-ch-02b-26300400102426", "2026-11-10 13:40", (1, 1, 0)),
+]
+
+cl = df[(df["site"] == CLOSET_SITE) & df["name"].isin(CLOSET_MAP)
         & (df["temperature"].notna() | df["humidity"].notna())]
 names = sorted(cl["name"].unique())
-others = df[(df["site"] == CLOSET_SITE) & ~df["name"].isin(names)].groupby("name")["description"].max()
-print(f"{len(names)} closet sensors (description contains {CLOSET_WORD!r}). Not included:")
-print(others.to_string() if len(others) else "  (none)")
+silent = sorted(set(CLOSET_MAP) - set(names))
+print(f"{len(names)} of {len(CLOSET_MAP)} sensors in CLOSET_MAP have readings.", f"No readings from: {silent}" if silent else "")
 
 LABELS = {"temperature": ("temperature", f"°{TEMP_UNIT}"), "abs_humidity": ("absolute humidity", "g/m³"),
           "dew_point": ("dew point", f"°{TEMP_UNIT}"), "humidity": ("relative humidity", "% RH")}
@@ -238,29 +259,6 @@ avg_note = f", {AVG_HOURS} h trailing mean" if AVG_HOURS else ""
 
 
 # %%
-# Positions: placements.csv where present, else this map of closet corners as fractions of the closet
-# (x: 0 west .. 1 east, y: 0 south .. 1 north, z: 0 floor .. 1 top), from the Zigbee2MQTT descriptions.
-CLOSET_MAP = {
-    "densor-ch-02b-25494000601274": (0, 1, 0),  # northwest corner floor
-    "densor-ch-02b-26300400159665": (1, 1, 0),  # northeast corner floor
-    "densor-ch-02b-26300400477224": (1, 0, 0),  # southeast floor
-    "densor-ch-02p-25494000023339": (0, 0, 0),  # southwest corner floor
-    "densor-ch-02b-26300400139758": (1, 0, 1),  # southeast, top shelf
-    "densor-ch-02b-26300400567826": (0, 0, 1),  # southwest corner top (description truncated in the list)
-    "densor-ch-02b-26300400333849": (0, 1, 1),  # northwest corner ceiling (final position; see MOVES)
-    "densor-ch-02b-26300400102426": (1, 1, 1),  # northeast corner ceiling (final position; see MOVES)
-}
-
-# Moves: (sensor, local time it was moved, (x, y, z) fractions as above). The latest move at or before a
-# given time wins, so the 3-D view follows a sensor as it is relocated. Example:
-#   MOVES = [("densor-ch-02b-26300400159665", "2026-11-10 15:00", (1, 1, 1))]
-MOVES = [
-    # Nov 10: the two ceiling-corner sensors start out on the floor beside the north floor sensors for a spot check.
-    # When they go up, add ("<sensor>", "<local time they were moved>", (x, 1, 1)) for each, which puts them back at the ceiling.
-    ("densor-ch-02b-26300400333849", "2026-11-10 13:40", (0, 1, 0)),
-    ("densor-ch-02b-26300400102426", "2026-11-10 13:40", (1, 1, 0)),
-]
-
 placed = None
 if PLACEMENTS.exists():
     placed = pd.read_csv(PLACEMENTS)
