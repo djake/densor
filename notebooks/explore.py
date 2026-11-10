@@ -195,13 +195,14 @@ SURFACE_TOL = 0.2                                           # a sensor is "on" a
 
 # Positions: placements.csv where present, else this map of closet corners as fractions of the closet
 # (x: 0 west .. 1 east, y: 0 south .. 1 north, z: 0 floor .. 1 top), from the Zigbee2MQTT descriptions.
+SHELF_Z = 0.7   # height of the top shelf as a fraction of the closet's height (floor 0, ceiling 1); set to the real value
 CLOSET_MAP = {
     "densor-ch-02b-25494000601274": (0, 1, 0),  # northwest corner floor
     "densor-ch-02b-26300400159665": (1, 1, 0),  # northeast corner floor
     "densor-ch-02b-26300400477224": (1, 0, 0),  # southeast floor
     "densor-ch-02p-25494000023339": (0, 0, 0),  # southwest corner floor
-    "densor-ch-02b-26300400139758": (1, 0, 1),  # southeast, top shelf
-    "densor-ch-02b-26300400567826": (0, 0, 1),  # southwest corner top (description truncated in the list)
+    "densor-ch-02b-26300400139758": (1, 0, SHELF_Z),  # southeast, top shelf
+    "densor-ch-02b-26300400567826": (0, 0, SHELF_Z),  # southwest corner, top shelf
     "densor-ch-02b-26300400333849": (0, 1, 1),  # northwest corner ceiling (final position; see MOVES)
     "densor-ch-02b-26300400102426": (1, 1, 1),  # northeast corner ceiling (final position; see MOVES)
 }
