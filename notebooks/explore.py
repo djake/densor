@@ -197,7 +197,7 @@ SURFACE_TOL = 0.2                                           # a sensor is "on" a
 # (x: 0 west .. 1 east, y: 0 south .. 1 north, z: 0 floor .. 1 top), from the Zigbee2MQTT descriptions.
 SHELF_Z = 0.7   # height of the top shelf as a fraction of the closet's height (floor 0, ceiling 1); set to the real value
 CLOSET_MAP = {
-    "densor-ch-02b-25494000601274": (0, 1, 0),  # northwest corner floor
+    "densor-ch-02p-25494000601274": (0, 1, 0),  # northwest corner floor
     "densor-ch-02b-26300400159665": (1, 1, 0),  # northeast corner floor
     "densor-ch-02b-26300400477224": (1, 0, 0),  # southeast floor
     "densor-ch-02p-25494000023339": (0, 0, 0),  # southwest corner floor
