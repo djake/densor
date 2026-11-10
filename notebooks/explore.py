@@ -246,12 +246,19 @@ CLOSET_MAP = {
     "densor-ch-02p-25494000023339": (0, 0, 0),  # southwest corner floor
     "densor-ch-02b-26300400139758": (1, 0, 1),  # southeast, top shelf
     "densor-ch-02b-26300400567826": (0, 0, 1),  # southwest corner top (description truncated in the list)
+    "densor-ch-02b-26300400333849": (0, 1, 1),  # northwest corner ceiling (final position; see MOVES)
+    "densor-ch-02b-26300400102426": (1, 1, 1),  # northeast corner ceiling (final position; see MOVES)
 }
 
 # Moves: (sensor, local time it was moved, (x, y, z) fractions as above). The latest move at or before a
 # given time wins, so the 3-D view follows a sensor as it is relocated. Example:
 #   MOVES = [("densor-ch-02b-26300400159665", "2026-11-10 15:00", (1, 1, 1))]
-MOVES = []
+MOVES = [
+    # Nov 10: the two ceiling-corner sensors start out on the floor beside the north floor sensors for a spot check.
+    # When they go up, add ("<sensor>", "<local time they were moved>", (x, 1, 1)) for each, which puts them back at the ceiling.
+    ("densor-ch-02b-26300400333849", "2026-11-10 13:40", (0, 1, 0)),
+    ("densor-ch-02b-26300400102426", "2026-11-10 13:40", (1, 1, 0)),
+]
 
 placed = None
 if PLACEMENTS.exists():
@@ -470,14 +477,21 @@ px.scatter(pair, x="d_temp", y="d_ah", color="name", hover_data=["description"],
 # List each period when two sensors sat next to each other as `(sensor_a, sensor_b, start, end)` in local time. For each, the difference `a - b` is summarised for temperature, relative humidity and absolute humidity. Sonoff quotes ±0.2 °C and ±2 % RH per sensor, so two sensors can legitimately differ by up to about twice that (set in `SPEC_T_C` and `SPEC_RH`). A difference well inside that is not worth calibrating; one well outside it means a sensor is off or the two were not in the same air.
 
 # %%
-SPOT_CHECKS = []   # e.g. [("densor-ch-02b-26300400159665", "densor-ch-02b-26300400477224", "2026-11-10 13:45", "2026-11-10 15:45")]
+# (sensor a, sensor b, start, end) in local time; end None means up to the latest reading. Set end to the time they were moved.
+SPOT_CHECKS = [
+    ("densor-ch-02b-26300400333849", "densor-ch-02b-25494000601274", "2026-11-10 13:45", None),   # northwest: new 02B vs the 02P on the floor
+    ("densor-ch-02b-26300400102426", "densor-ch-02b-26300400159665", "2026-11-10 13:45", None),   # northeast: new 02B vs the 02B on the floor
+]
 SPEC_T_C = 0.2     # ±°C per sensor
 SPEC_RH = 2.0      # ±% RH per sensor
 
 ah = 216.7 * vapour / (t_c + 273.15)
 rows, diffs = [], []
 for a, b, start, end in SPOT_CHECKS:
-    sl = slice(pd.Timestamp(start, tz=LOCAL_TZ), pd.Timestamp(end, tz=LOCAL_TZ))
+    sl = slice(pd.Timestamp(start, tz=LOCAL_TZ), pd.Timestamp(end, tz=LOCAL_TZ) if end else None)
+    if a not in names or b not in names:
+        print(f"Skipping {a} / {b}: not in the closet sensor list above (check the name and that the description contains {CLOSET_WORD!r}).")
+        continue
     for label, g, scale, spec in [(f"temperature (°{TEMP_UNIT})", t_c, 9 / 5 if TEMP_UNIT == "F" else 1, 2 * SPEC_T_C),
                                   ("relative humidity (% RH)", rh, 1, 2 * SPEC_RH), ("absolute humidity (g/m³)", ah, 1, None)]:
         d = ((g[a] - g[b]).loc[sl].dropna()) * scale
