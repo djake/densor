@@ -164,7 +164,7 @@ px.scatter(df, x="ts_local", y="linkquality", color="name", hover_data=HOVER, ti
 # %% [markdown]
 # ## Closet experiment (Experiment 1)
 #
-# The closet sensors drawn in 3-D, and on each of the six surfaces (top, floor, four walls) as seen from inside. Colour is the **deviation from the closet median** by default, since the wall effect is a few tenths of a degree on top of a shared swing; set `SHOW = "absolute"` for plain values. `QUANTITY` switches what is drawn: `"temperature"`, `"humidity"` (RH), `"abs_humidity"` (g/m³) or `"dew_point"`. Absolute humidity and dew point separate an air leak (outdoor air is drier, so they drop toward the outdoor value) from a cold surface (they stay the same while RH rises).
+# The closet sensors drawn in 3-D, and on each of the six surfaces (upper, floor, four walls) as seen from inside; "upper" covers both the ceiling and the top shelf, which sit about a foot apart. Colour is the **deviation from the closet median** by default, since the wall effect is a few tenths of a degree on top of a shared swing; set `SHOW = "absolute"` for plain values. `QUANTITY` switches what is drawn: `"temperature"`, `"humidity"` (RH), `"abs_humidity"` (g/m³) or `"dew_point"`. Absolute humidity and dew point separate an air leak (outdoor air is drier, so they drop toward the outdoor value) from a cold surface (they stay the same while RH rises).
 #
 # Positions come from `notebooks/placements.csv` when it exists (see `placements.csv.example`: one row per placement, in cm, with optional start and end times so sensors can be moved). The closet's sensors are the ones listed in `CLOSET_MAP`, a hardcoded corner for each, which is approximate; descriptions are not used.
 #
@@ -195,7 +195,7 @@ SURFACE_TOL = 0.2                                           # a sensor is "on" a
 
 # Positions: placements.csv where present, else this map of closet corners as fractions of the closet
 # (x: 0 west .. 1 east, y: 0 south .. 1 north, z: 0 floor .. 1 top), from the Zigbee2MQTT descriptions.
-SHELF_Z = 0.7   # height of the top shelf as a fraction of the closet's height (floor 0, ceiling 1); set to the real value
+SHELF_Z = 0.875  # top shelf height as a fraction of the closet's height (floor 0, ceiling 1); about 1 ft below the ceiling, so 1 - 30 / closet height in cm
 CLOSET_MAP = {
     "densor-ch-02p-25494000601274": (0, 1, 0),  # northwest corner floor
     "densor-ch-02b-26300400159665": (1, 1, 0),  # northeast corner floor
@@ -394,7 +394,7 @@ fig3d.show()
 # %%
 # title, axis the surface is perpendicular to, which side (0 or max), horizontal axis, vertical axis, flip horizontal
 SURFACES = [
-    ("Top", "z", 1, "x", "y", False), ("North wall", "y", 1, "x", "z", False), ("East wall", "x", 1, "y", "z", True),
+    ("Upper (ceiling + shelf)", "z", 1, "x", "y", False), ("North wall", "y", 1, "x", "z", False), ("East wall", "x", 1, "y", "z", True),
     ("Floor", "z", 0, "x", "y", False), ("South wall", "y", 0, "x", "z", True), ("West wall", "x", 0, "y", "z", False),
 ]
 
