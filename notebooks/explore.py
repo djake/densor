@@ -214,6 +214,9 @@ MOVES = [
     # When they go up, add ("<sensor>", "<local time they were moved>", (x, 1, 1)) for each, which puts them back at the ceiling.
     ("densor-ch-02b-26300400333849", "2026-11-10 13:40", (0, 1, 0)),
     ("densor-ch-02b-26300400102426", "2026-11-10 13:40", (1, 1, 0)),
+    # Moved up to the ceiling corners around 13:57 (time approximate).
+    ("densor-ch-02b-26300400333849", "2026-11-10 13:57", (0, 1, 1)),
+    ("densor-ch-02b-26300400102426", "2026-11-10 13:57", (1, 1, 1)),
 ]
 
 cl = df[(df["site"] == CLOSET_SITE) & df["name"].isin(CLOSET_MAP)
@@ -478,8 +481,7 @@ px.scatter(pair, x="d_temp", y="d_ah", color="name", hover_data=["description"],
 # %%
 # (sensor a, sensor b, start, end) in local time; end None means up to the latest reading. Set end to the time they were moved.
 SPOT_CHECKS = [
-    ("densor-ch-02b-26300400333849", "densor-ch-02b-25494000601274", "2026-11-10 13:45", None),   # northwest: new 02B vs the 02P on the floor
-    ("densor-ch-02b-26300400102426", "densor-ch-02b-26300400159665", "2026-11-10 13:45", None),   # northeast: new 02B vs the 02B on the floor
+    # ("<new sensor>", "<existing sensor beside it>", "2026-11-10 15:00", "2026-11-10 17:00"),
 ]
 SPEC_T_C = 0.2     # ±°C per sensor
 SPEC_RH = 2.0      # ±% RH per sensor
