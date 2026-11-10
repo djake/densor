@@ -207,8 +207,9 @@ qname, unit = LABELS[QUANTITY]
 
 # One column per sensor on a regular UTC grid. Sensors report on change plus a heartbeat,
 # so a reading holds until the next one (up to MAX_HOLD).
-def on_grid(col):
-    g = cl.assign(bin=cl["ts"].dt.floor(BIN)).pivot_table(index="bin", columns="name", values=col, aggfunc="mean")
+def on_grid(col, rows=None):
+    rows = cl if rows is None else rows
+    g = rows.assign(bin=rows["ts"].dt.floor(BIN)).pivot_table(index="bin", columns="name", values=col, aggfunc="mean")
     g = g.reindex(pd.date_range(g.index.min(), g.index.max(), freq=BIN))
     return g.ffill(limit=int(pd.Timedelta(MAX_HOLD) / pd.Timedelta(BIN)))
 
@@ -485,15 +486,19 @@ SPOT_CHECKS = [
 SPEC_T_C = 0.2     # ±°C per sensor
 SPEC_RH = 2.0      # ±% RH per sensor
 
-ah = 216.7 * vapour / (t_c + 273.15)
+# Built from the named sensors only, whatever their descriptions say.
+sc_rows = df[(df["site"] == CLOSET_SITE) & df["name"].isin({n for a, b, *_ in SPOT_CHECKS for n in (a, b)})]
+sc_t, sc_rh = (on_grid("temperature", sc_rows), on_grid("humidity", sc_rows)) if len(sc_rows) else (None, None)
+sc_vapour = sc_rh / 100 * 6.112 * np.exp(17.62 * sc_t / (243.12 + sc_t)) if len(sc_rows) else None
 rows, diffs = [], []
 for a, b, start, end in SPOT_CHECKS:
     sl = slice(pd.Timestamp(start, tz=LOCAL_TZ), pd.Timestamp(end, tz=LOCAL_TZ) if end else None)
-    if a not in names or b not in names:
-        print(f"Skipping {a} / {b}: not in the closet sensor list above (check the name and that the description contains {CLOSET_WORD!r}).")
+    if sc_t is None or a not in sc_t.columns or b not in sc_t.columns:
+        print(f"Skipping {a} / {b}: no readings yet from one of them at site {CLOSET_SITE!r} (check the name).")
         continue
-    for label, g, scale, spec in [(f"temperature (°{TEMP_UNIT})", t_c, 9 / 5 if TEMP_UNIT == "F" else 1, 2 * SPEC_T_C),
-                                  ("relative humidity (% RH)", rh, 1, 2 * SPEC_RH), ("absolute humidity (g/m³)", ah, 1, None)]:
+    for label, g, scale, spec in [(f"temperature (°{TEMP_UNIT})", sc_t, 9 / 5 if TEMP_UNIT == "F" else 1, 2 * SPEC_T_C),
+                                  ("relative humidity (% RH)", sc_rh, 1, 2 * SPEC_RH),
+                                  ("absolute humidity (g/m³)", 216.7 * sc_vapour / (sc_t + 273.15), 1, None)]:
         d = ((g[a] - g[b]).loc[sl].dropna()) * scale
         if len(d) == 0:
             rows.append({"a": short(a), "b": short(b), "quantity": label, "n": 0})
