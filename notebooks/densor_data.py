@@ -303,7 +303,8 @@ def load_readings(con, roots, live=True, ttl=None, refresh=False, mirror=None, r
             df = df.sort_values("ts_utc")
             df["ts"] = pd.to_datetime(df["ts_utc"], utc=True)
             df["ts_local"] = df["ts"].dt.tz_convert(LOCAL_TZ)
-            unnamed = df["name"].isna()
+            # Zigbee2MQTT's default friendly name for a new device is its IEEE address, so that counts as unnamed too.
+            unnamed = df["name"].isna() | df["name"].astype(str).str.fullmatch(r"0x[0-9a-fA-F]{16}")
             df["name"] = df["name"].fillna(df["ieee"])
             # Devices with no friendly name are strays (a bulb that tried to join, say), and DENSOR_IGNORE lists more
             # (comma-separated names or IEEE addresses). Readings already logged for them are dropped here.
