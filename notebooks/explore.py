@@ -16,6 +16,7 @@ import os
 import pandas as pd
 import plotly.express as px
 
+from densor_plots import stacked_scatter
 import densor_data as dd  # data loading, shared with the other notebooks (notebooks/densor_data.py)
 
 LOCAL_TZ = dd.LOCAL_TZ
@@ -33,7 +34,6 @@ roots
 df = dd.load_readings(con, roots)
 dd.report()  # where the time went
 HOVER = ["description"]  # shown when hovering a point; names stay short
-WIDE = dict(height=650, legend=dict(orientation="h", yanchor="top", y=-0.12, title_text=""))  # tall plots, legend below so they can be wider
 
 # One row per sensor, with the description from Zigbee2MQTT (max: a non-empty text sorts after "").
 pd.set_option("display.max_colwidth", None)
@@ -44,12 +44,9 @@ df.groupby(["site", "name"]).agg(description=("description", "max"), rows=("ts",
 # ## Temperature and humidity per sensor
 
 # %%
-px.scatter(df, x="ts_local", y="temp", color="name", hover_data=HOVER,
-           title=f"Temperature (°{TEMP_UNIT})", labels={"ts_local": "", "temp": f"°{TEMP_UNIT}"}).update_layout(**WIDE).show()
-
-# %%
-px.scatter(df, x="ts_local", y="humidity", color="name", hover_data=HOVER,
-           title="Relative humidity (%)", labels={"ts_local": "", "humidity": "%"}).update_layout(**WIDE).show()
+# Both on one time axis with one legend; click a legend entry to hide a sensor in both.
+stacked_scatter(df, [("temp", f"Temperature (°{TEMP_UNIT})", f"°{TEMP_UNIT}"), ("humidity", "Relative humidity (%)", "%")],
+                hover_data=HOVER).show()
 
 # %% [markdown]
 # ## Air pressure
@@ -62,7 +59,7 @@ if p.empty:
     print("No pressure readings yet")
 else:
     px.scatter(p, x="ts_local", y="pressure", color="name", hover_data=HOVER,
-               title="Air pressure (hPa)", labels={"ts_local": "", "pressure": "hPa"}).update_layout(**WIDE).show()
+               title="Air pressure (hPa)", labels={"ts_local": "", "pressure": "hPa"}).show()
 
 # %% [markdown]
 # ## Other notebooks
