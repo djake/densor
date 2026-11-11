@@ -66,7 +66,7 @@ else:
 # %% [markdown]
 # ## Other notebooks
 #
-# `system_health.py` (reporting gaps, battery, voltage, link quality) and `experiment_1_closet.py` (the closet wall-proximity testbed) load the same data through `densor_data`.
+# `system_health.py` (reporting gaps, battery, voltage, link quality, side-by-side spot checks) and `experiment_1_closet.py` (the closet wall-proximity testbed) load the same data through `densor_data`.
 #
 # ## Your own queries
 #
