@@ -20,13 +20,13 @@ All rights reserved. See `LICENSE`.
 
 ## Exploring the data
 
-`notebooks/explore.py` is the notebook, stored as a plain Python file (jupytext "percent" format) so that running it never changes a tracked file. It reads the Parquet files for every site from the bucket with DuckDB and plots them. Each Pi uploads under its own prefix (`S3_PREFIX` on the Pi); the notebook lists them as `site=prefix` pairs in `S3_SITES`.
+The notebooks are `explore.py` (general plots), `system_health.py` (reporting gaps, battery, link quality) and `experiment_1_closet.py` (the closet testbed), all loading data through `densor_data.py`; `densor_closet.py` holds the closet helpers. `notebooks/explore.py` is the general one, stored as a plain Python file (jupytext "percent" format) so that running it never changes a tracked file. It reads the Parquet files for every site from the bucket with DuckDB and plots them. Each Pi uploads under its own prefix (`S3_PREFIX` on the Pi); the notebook lists them as `site=prefix` pairs in `S3_SITES`.
 
 ```
 cd notebooks
 cp densor-read.env.example .env      # then fill in a read-only Tigris key
 uv venv && uv pip install -r requirements.txt
-uv run jupytext --sync explore.py    # creates explore.ipynb (gitignored), paired with explore.py
+uv run jupytext --sync *.py    # creates the .ipynb files (gitignored), paired with each .py
 uv run jupyter lab explore.ipynb
 ```
 
