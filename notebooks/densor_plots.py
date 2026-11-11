@@ -3,7 +3,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 
 
-def stacked_scatter(df, panels, *, x="ts_local", color="name", hover_data=None, height=850, title=None):
+def stacked_scatter(df, panels, *, x="ts_local", color="name", hover_data=None, height=1300, title=None):
     """Scatter panels stacked on one shared time axis, with one legend for all of them.
 
     panels: [(column, panel title, y-axis title)]. Each sensor keeps one colour in every panel, and clicking a legend
