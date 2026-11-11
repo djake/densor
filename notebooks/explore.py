@@ -5,7 +5,7 @@
 #
 # Credentials come from `notebooks/.env` or the process environment. Use a read-only key.
 #
-# Loading lives in `notebooks/densor_data.py`, which other notebooks import too (`import densor_data as dd`). It times every step; `dd.report()` prints where the time went. Live readings from the Pis are cached on disk for 10 minutes (`DENSOR_LIVE_TTL`).
+# Loading lives in `notebooks/densor_data.py`, which other notebooks import too (`import densor_data as dd`). It times every step; `dd.report()` prints where the time went. The bucket's hourly files are kept as a local copy so only new hours are downloaded, and live readings from the Pis are cached on disk for 10 minutes (`DENSOR_LIVE_TTL`).
 
 # %%
 import os

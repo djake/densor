@@ -10,14 +10,18 @@ DataFrame. Every step is timed; call `report()` (or `timings()`) after loading t
     dd.report()
 
 Configuration is by environment variable (or notebooks/.env): S3_BUCKET, S3_ENDPOINT, S3_SITES, AWS_*,
-DENSOR_LOCAL_DIR, DENSOR_LIVE, DENSOR_REMOTE_DB, TEMP_UNIT, and for the live cache DENSOR_CACHE_DIR
-(default ~/.cache/densor) and DENSOR_LIVE_TTL (seconds, default 600).
+DENSOR_LOCAL_DIR, DENSOR_LIVE, DENSOR_REMOTE_DB, TEMP_UNIT, and for the caches DENSOR_CACHE_DIR
+(default ~/.cache/densor), DENSOR_LIVE_TTL (seconds, default 600), DENSOR_MIRROR (1 = keep a local copy of the
+bucket's hourly files, the default; 0 = read the bucket directly) and DENSOR_REFRESH_BUCKET=1 (re-download
+everything).
 """
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -116,22 +120,89 @@ def connect():
 
 # ---------------------------------------------------------------- bucket
 
-def _site_query(site, root):
+def _site_query(site, readings_root, devices_root):
     # r.* so that sites whose files predate a column (pressure, voltage) still load
     return f"""
         SELECT '{site}' AS site, r.*, d.name, d.description
-        FROM read_parquet('{root}/readings/date=*/hour=*.parquet', union_by_name = true) r
-        LEFT JOIN read_json('{root}/devices.json') d USING (ieee)
+        FROM read_parquet('{readings_root}/readings/date=*/hour=*.parquet', union_by_name = true) r
+        LEFT JOIN read_json('{devices_root}/devices.json') d USING (ieee)
     """
 
 
-def load_bucket(con, roots):
-    """The uploaded readings for every site, one row per reading."""
+def mirror_dir():
+    return cache_dir() / "bucket"
+
+
+def sync_bucket(con, roots, workers=16, rebuild=False):
+    """Keep a local copy of every site's hourly Parquet files and return {site: local root}.
+
+    The uploader writes each closed hour once and never changes it, so a file already on disk never needs
+    fetching again: only hours that are new in the bucket are downloaded, in parallel. `rebuild=True` deletes
+    the local copy first. Files that fail to download are skipped and retried on the next run.
+    """
+    base = mirror_dir()
+    local_roots, todo = {}, []
+    with timed("sync total") as total:
+        for site, root in roots.items():
+            site_dir = base / site
+            if rebuild and site_dir.exists():
+                shutil.rmtree(site_dir)
+            local_roots[site] = str(site_dir)
+            with timed("list bucket", site=site) as t:
+                remote = [r[0] for r in con.execute(
+                    f"SELECT file FROM glob('{root}/readings/date=*/hour=*.parquet')").fetchall()]
+                t["files"] = len(remote)
+            for src in remote:
+                dest = site_dir / src[len(root) + 1:]
+                if not dest.exists():
+                    todo.append((src, dest))
+
+        def fetch(job):
+            src, dest = job
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            tmp = dest.with_suffix(".tmp")
+            cur = con.cursor()  # one cursor per thread; a connection is not thread safe
+            try:
+                cur.execute(f"COPY (SELECT * FROM read_parquet('{src}')) TO '{tmp}' (FORMAT PARQUET)")
+                os.replace(tmp, dest)
+                return None
+            except Exception as e:
+                tmp.unlink(missing_ok=True)
+                return f"{src}: {e}"
+            finally:
+                cur.close()
+
+        failed = []
+        if todo:
+            with timed("download", files=len(todo), workers=workers):
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    failed = [r for r in pool.map(fetch, todo) if r]
+        total.update(downloaded=len(todo) - len(failed), failed=len(failed))
+        for msg in failed[:3]:
+            print("could not download", msg)
+    return local_roots
+
+
+def load_bucket(con, roots, mirror=None, rebuild=False):
+    """The uploaded readings for every site, one row per reading.
+
+    With `mirror` on (the default unless DENSOR_LOCAL_DIR is set; DENSOR_MIRROR=0 turns it off) the hourly
+    files are read from the local copy kept by `sync_bucket`; devices.json is always read fresh.
+    """
+    if mirror is None:
+        mirror = os.environ.get("DENSOR_MIRROR", "0" if os.environ.get("DENSOR_LOCAL_DIR") else "1") != "0"
+    rebuild = rebuild or os.environ.get("DENSOR_REFRESH_BUCKET") == "1"
+    readings_roots = roots
+    if mirror:
+        try:
+            readings_roots = sync_bucket(con, roots, rebuild=rebuild)
+        except Exception as e:
+            print(f"local copy unavailable ({e}); reading the bucket directly")
     frames = []
     for site, root in roots.items():
-        with timed("bucket", site=site) as t:
+        with timed("read", site=site, source="local copy" if readings_roots is not roots else "bucket") as t:
             try:
-                f = con.execute(_site_query(site, root)).df().reindex(columns=COLUMNS)
+                f = con.execute(_site_query(site, readings_roots[site], root)).df().reindex(columns=COLUMNS)
                 t["rows"] = len(f)
                 frames.append(f)
             except duckdb.IOException as e:  # a site with no files yet
@@ -212,11 +283,11 @@ def live_rows(site, host, after, ttl=None, refresh=False):
 
 # ---------------------------------------------------------------- everything together
 
-def load_readings(con, roots, live=True, ttl=None, refresh=False):
+def load_readings(con, roots, live=True, ttl=None, refresh=False, mirror=None, rebuild=False):
     """All readings as one DataFrame, with ts (UTC), ts_local, name, temp (in TEMP_UNIT) and description added."""
     reset_timings()
     with timed("load_readings total"):
-        df = load_bucket(con, roots)
+        df = load_bucket(con, roots, mirror=mirror, rebuild=rebuild)
         if live:
             for site, host in live_hosts().items():
                 # Uploaded hours are complete, so anything newer than the newest bucket row is not in the bucket.
