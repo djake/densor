@@ -303,7 +303,17 @@ def load_readings(con, roots, live=True, ttl=None, refresh=False, mirror=None, r
             df = df.sort_values("ts_utc")
             df["ts"] = pd.to_datetime(df["ts_utc"], utc=True)
             df["ts_local"] = df["ts"].dt.tz_convert(LOCAL_TZ)
+            unnamed = df["name"].isna()
             df["name"] = df["name"].fillna(df["ieee"])
+            # Devices with no friendly name are strays (a bulb that tried to join, say), and DENSOR_IGNORE lists more
+            # (comma-separated names or IEEE addresses). Readings already logged for them are dropped here.
+            ignore = {x.strip() for x in os.environ.get("DENSOR_IGNORE", "").split(",") if x.strip()}
+            drop = df["name"].isin(ignore) | df["ieee"].isin(ignore)
+            if os.environ.get("DENSOR_KEEP_UNNAMED", "0") != "1":
+                drop |= unnamed
+            if drop.any():
+                print(f"ignored {int(drop.sum())} readings from: {sorted(df.loc[drop, 'name'].unique())}")
+                df = df[~drop].copy()
             df["temp"] = df["temperature"] * 9 / 5 + 32 if TEMP_UNIT == "F" else df["temperature"]  # `temperature` stays in Celsius
             df["description"] = df["description"].fillna("")
     return df
