@@ -190,6 +190,7 @@ MAX_HOLD = "2h"                                             # stop holding a rea
 ANIM_DAYS = 2                                               # length of the 3-D time slider
 FRAME_EVERY = "1h"
 AT = None                                                   # local time for the surface panels, e.g. "2026-11-08 07:30"; None = latest
+ABS_RANGE = None                                            # colour range for SHOW = "absolute", e.g. (40, 90); None = 40-90 °F (4-32 °C) for temperatures, automatic otherwise
 AVG_HOURS = None                                            # e.g. 24: draw the trailing mean over this many hours instead of single readings
 SURFACE_TOL = 0.2                                           # a sensor is "on" a surface within this fraction of the closet's size
 
@@ -344,7 +345,12 @@ if SHOW == "deviation":
     r = max(float(np.percentile(np.abs(all_vals), 98)), 0.1) if len(all_vals) else 1.0
     color_axis = dict(colorscale=COLORSCALE, cmin=-r, cmax=r, cmid=0, colorbar=dict(title=f"{unit} from median"))
 else:
-    lo, hi = (np.percentile(all_vals, [2, 98]) if len(all_vals) else (0, 1))
+    if ABS_RANGE:
+        lo, hi = ABS_RANGE
+    elif QUANTITY in ("temperature", "dew_point"):
+        lo, hi = (40, 90) if TEMP_UNIT == "F" else (4, 32)
+    else:
+        lo, hi = np.percentile(all_vals, [2, 98]) if len(all_vals) else (0, 1)
     color_axis = dict(colorscale=COLORSCALE, cmin=float(lo), cmax=float(hi), colorbar=dict(title=unit))
 
 def box_trace():
