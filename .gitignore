@@ -14,3 +14,4 @@ __pycache__/
 writeup/main.pdf
 notebooks/*.ipynb
 .ipynb_checkpoints/
+notebooks/placements.csv
