@@ -33,7 +33,6 @@ con, roots = dd.connect()
 df = dd.load_readings(con, roots)
 dd.report()  # where the time went
 
-CLOSET_SITE = os.environ.get("CLOSET_SITE", "ch")
 PLACEMENTS = Path(os.environ.get("DENSOR_PLACEMENTS", "placements.csv"))
 CLOSET_CM = os.environ.get("CLOSET_CM")                     # "x,y,z" in cm; default: from placements, else a unit box
 EXTERIOR = ()                                               # e.g. ("north", "west"): marks those walls in the titles
@@ -76,7 +75,7 @@ MOVES = [
     ("densor-ch-02b-26300400102426", "2026-11-10 13:57", (1, 1, 1)),
 ]
 
-cl = df[(df["site"] == CLOSET_SITE) & df["name"].isin(CLOSET_MAP)
+cl = df[df["name"].isin(CLOSET_MAP)
         & (df["temperature"].notna() | df["humidity"].notna())]
 names = sorted(cl["name"].unique())
 silent = sorted(set(CLOSET_MAP) - set(names))
@@ -358,13 +357,13 @@ SPEC_T_C = 0.2     # ±°C per sensor
 SPEC_RH = 2.0      # ±% RH per sensor
 
 # Built from the named sensors only, whatever their descriptions say.
-sc_rows = df[(df["site"] == CLOSET_SITE) & df["name"].isin({n for a, b, *_ in SPOT_CHECKS for n in (a, b)})]
+sc_rows = df[df["name"].isin({n for a, b, *_ in SPOT_CHECKS for n in (a, b)})]
 sc_t, sc_rh = (on_grid("temperature", sc_rows), on_grid("humidity", sc_rows)) if len(sc_rows) else (None, None)
 rows, diffs = [], []
 for a, b, start, end in SPOT_CHECKS:
     sl = slice(pd.Timestamp(start, tz=LOCAL_TZ), pd.Timestamp(end, tz=LOCAL_TZ) if end else None)
     if sc_t is None or a not in sc_t.columns or b not in sc_t.columns:
-        print(f"Skipping {a} / {b}: no readings yet from one of them at site {CLOSET_SITE!r} (check the name).")
+        print(f"Skipping {a} / {b}: no readings yet from one of them (check the name).")
         continue
     for label, g, scale, spec in [(f"temperature (°{TEMP_UNIT})", sc_t, 9 / 5 if TEMP_UNIT == "F" else 1, 2 * SPEC_T_C),
                                   ("relative humidity (% RH)", sc_rh, 1, 2 * SPEC_RH),
