@@ -4,6 +4,10 @@
 # Whether the sensors and the network are behaving: how often each sensor reports, battery and voltage, and link quality. Data comes from the shared loader (`densor_data`), so the bucket copy and the live-readings cache are shared with the other notebooks.
 
 # %%
+# Pick up edits to densor_data.py and densor_closet.py without restarting the kernel.
+# %load_ext autoreload
+# %autoreload 2
+
 import os
 import pandas as pd
 import plotly.express as px

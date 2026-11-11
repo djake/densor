@@ -8,6 +8,10 @@
 # Loading lives in `notebooks/densor_data.py`, which other notebooks import too (`import densor_data as dd`). It times every step; `dd.report()` prints where the time went. The bucket's hourly files are kept as a local copy so only new hours are downloaded, and live readings from the Pis are cached on disk for 10 minutes (`DENSOR_LIVE_TTL`).
 
 # %%
+# Pick up edits to densor_data.py and densor_closet.py without restarting the kernel.
+# %load_ext autoreload
+# %autoreload 2
+
 import os
 import pandas as pd
 import plotly.express as px

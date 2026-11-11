@@ -10,6 +10,10 @@
 # A surface needs at least 3 sensors on it to be filled in (inverse-distance weighting); with fewer, only the sensor markers are shown. The fill is a rough interpolation, not a measurement between sensors.
 
 # %%
+# Pick up edits to densor_data.py and densor_closet.py without restarting the kernel.
+# %load_ext autoreload
+# %autoreload 2
+
 import itertools
 import os
 from pathlib import Path
