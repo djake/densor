@@ -250,11 +250,34 @@ class Closet:
             hovertemplate="%{customdata[0]}<br>%{customdata[1]}<br>%{customdata[2]} " + self.unit + "<extra></extra>",
             showlegend=False)
 
-    def figure_3d(self):
+    # The three planes behind the default camera (south wall, west wall, floor), drawn as interpolated heatmaps.
+    BACK_PLANES = ("South wall", "West wall", "Floor")
+
+    def _plane_traces(self, t):
+        """One Surface per back plane, always in the same order so frames can update them (NaN where under 3 sensors)."""
+        data = {d["title"].split(":")[0].replace(" (exterior)", ""): d for d in self._surface_data(t)}
+        names = [s[0] for s in SURFACES]
+        traces = []
+        for title in self.BACK_PLANES:
+            _, normal, side, hor, ver, _ = SURFACES[names.index(title)]
+            d = data[title]
+            A, B = np.meshgrid(d["gx"], d["gy"])
+            fixed = np.full_like(A, side * self.dim_of[normal] - 0.012 * self.dim_of[normal])  # just behind the sensors
+            xyz = {normal: fixed, hor: A, ver: B}
+            traces.append(go.Surface(x=xyz["x"], y=xyz["y"], z=xyz["z"], surfacecolor=d["z"], coloraxis="coloraxis",
+                                     opacity=0.85, showscale=False, hoverinfo="skip", name=title,
+                                     lighting=dict(ambient=1, diffuse=0, specular=0)))
+        return traces
+
+    def figure_3d(self, planes=True):
+        """Sensors in 3-D with a time slider; with `planes`, the back south wall, west wall and floor are filled in."""
         W, D, H = self.dims
         ft = self.frame_times
-        fig = go.Figure(data=[self._box_trace(), self._sensors_trace(ft[0])],
-                        frames=[go.Frame(data=[self._sensors_trace(t)], traces=[1], name=self.label(t)) for t in ft])
+        extra = self._plane_traces if planes else (lambda t: [])
+        n_extra = len(extra(ft[0]))
+        fig = go.Figure(data=[self._box_trace(), *extra(ft[0]), self._sensors_trace(ft[0])],
+                        frames=[go.Frame(data=[*extra(t), self._sensors_trace(t)], traces=list(range(1, 2 + n_extra)),
+                                         name=self.label(t)) for t in ft])
         fig.update_layout(
             coloraxis=self.color_axis, height=650,
             title=f"Closet {self.qname} ({self.show}{self.avg_note}, {self.unit})",
