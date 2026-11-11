@@ -3,7 +3,7 @@
 #
 # Data comes from the shared loader (`densor_data`), so the bucket copy and the live-readings cache are shared with the other notebooks.
 #
-# The closet sensors drawn in 3-D, and on each of the six surfaces (upper, floor, four walls) as seen from inside; "upper" covers both the ceiling and the top shelf, which sit about two feet apart (26 in). Colour shows plain values by default; set `SHOW = "deviation"` for the **deviation from the closet median**, which brings out the wall effect (a few tenths of a degree) on top of the shared swing. `QUANTITY` switches what is drawn: `"temperature"`, `"humidity"` (RH), `"abs_humidity"` (g/m³) or `"dew_point"`. Absolute humidity and dew point separate an air leak (outdoor air is drier, so they drop toward the outdoor value) from a cold surface (they stay the same while RH rises).
+# The closet sensors drawn in 3-D, and on each of the six surfaces (upper, floor, four walls) as seen from inside; "upper" covers both the ceiling and the top shelf, which sit 16 in apart. Colour shows plain values by default; set `SHOW = "deviation"` for the **deviation from the closet median**, which brings out the wall effect (a few tenths of a degree) on top of the shared swing. `QUANTITY` switches what is drawn: `"temperature"`, `"humidity"` (RH), `"abs_humidity"` (g/m³) or `"dew_point"`. Absolute humidity and dew point separate an air leak (outdoor air is drier, so they drop toward the outdoor value) from a cold surface (they stay the same while RH rises).
 #
 # Positions come from `notebooks/placements.csv` when it exists (see `placements.csv.example`: one row per placement, in cm, with optional start and end times so sensors can be moved). The closet's sensors are the ones listed in `CLOSET_MAP`, a hardcoded corner for each, which is approximate; descriptions are not used.
 #
@@ -39,11 +39,11 @@ FRAME_EVERY = "1h"
 AT = None                                                   # local time for the surface panels, e.g. "2026-11-08 07:30"; None = latest
 ABS_RANGE = None                                            # colour range for SHOW = "absolute", e.g. (40, 90); None = 40-90 °F (4-32 °C) for temperatures, automatic otherwise
 AVG_HOURS = None                                            # e.g. 24: draw the trailing mean over this many hours instead of single readings
-SURFACE_TOL = 0.3                                           # a sensor is "on" a surface within this fraction of the closet's size (0.3 so the top shelf, 26 in below the ceiling, counts as upper)
+SURFACE_TOL = 0.2                                           # a sensor is "on" a surface within this fraction of the closet's size (0.2 of 89 in is 18 in, so the top shelf, 16 in below the ceiling, counts as upper)
 
 # Positions: placements.csv where present, else this map of closet corners as fractions of the closet
 # (x: 0 west .. 1 east, y: 0 south .. 1 north, z: 0 floor .. 1 top), from the Zigbee2MQTT descriptions.
-SHELF_Z = 63 / 89  # top shelf height as a fraction of the closet's height (floor 0, ceiling 1): 63 in of 89 in
+SHELF_Z = 73 / 89  # top shelf height as a fraction of the closet's height (floor 0, ceiling 1): 73 in of 89 in
 CLOSET_MAP = {
     "densor-ch-02p-25494000601274": (0, 1, 0),  # northwest corner floor
     "densor-ch-02b-26300400159665": (1, 1, 0),  # northeast corner floor
